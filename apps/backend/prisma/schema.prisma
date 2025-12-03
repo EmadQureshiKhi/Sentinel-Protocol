@@ -1,0 +1,182 @@
+// Prisma Schema for Liquidation Shield
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===========================================
+// Enums
+// ===========================================
+
+enum Protocol {
+  DRIFT
+  MARGINFI
+  SOLEND
+}
+
+enum RecommendedAction {
+  PROTECT
+  MONITOR
+  SAFE
+}
+
+enum AlertStatus {
+  ACTIVE
+  ACKNOWLEDGED
+  RESOLVED
+  EXPIRED
+}
+
+enum SwapStatus {
+  PENDING
+  SIMULATING
+  SUBMITTED
+  CONFIRMED
+  FAILED
+}
+
+// ===========================================
+// Models
+// ===========================================
+
+model MonitoredAccount {
+  id            String   @id @default(uuid())
+  walletAddress String   @unique
+  protocol      Protocol
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  snapshots       AccountSnapshot[]
+  alerts          Alert[]
+  protectiveSwaps ProtectiveSwap[]
+
+  @@index([walletAddress])
+  @@index([protocol])
+  @@index([isActive])
+}
+
+
+model AccountSnapshot {
+  id        String           @id @default(uuid())
+  accountId String
+  account   MonitoredAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  // Position data
+  collateralValue        Float
+  borrowedValue          Float
+  leverage               Float
+  healthFactor           Float
+  maintenanceMarginRatio Float
+  currentMarginRatio     Float
+  liquidationPrice       Float
+  oraclePrice            Float
+
+  // Risk metrics
+  riskScore           Int
+  hvixValue           Float
+  cascadeProbability  Float
+  timeToLiquidation   Float
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId])
+  @@index([accountId, createdAt])
+  @@index([createdAt])
+}
+
+model Alert {
+  id        String           @id @default(uuid())
+  accountId String
+  account   MonitoredAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  // Risk data
+  riskScore          Int
+  cascadeProbability Float
+  timeToLiquidation  Float
+  estimatedLosses    Float
+  recommendedAction  RecommendedAction
+
+  // Status
+  status         AlertStatus @default(ACTIVE)
+  acknowledgedAt DateTime?
+  resolvedAt     DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId])
+  @@index([status])
+  @@index([accountId, status])
+  @@index([createdAt])
+}
+
+model ProtectiveSwap {
+  id        String           @id @default(uuid())
+  accountId String
+  account   MonitoredAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  // Swap details
+  fromToken    String
+  toToken      String
+  inputAmount  Float
+  outputAmount Float
+  slippageBps  Int
+
+  // MEV protection
+  usedShadowLane  Boolean
+  usedJitoBundle  Boolean
+  jitoTipLamports Int?
+  bundleId        String?
+
+  // Slippage analysis
+  standardSlippage Float?
+  actualSlippage   Float?
+  mevSaved         Float?
+
+  // Transaction
+  transactionSignature String?
+  status               SwapStatus
+  errorMessage         String?
+
+  executedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([accountId])
+  @@index([status])
+  @@index([accountId, createdAt])
+  @@index([createdAt])
+}
+
+model PriceHistory {
+  id         String   @id @default(uuid())
+  token      String
+  price      Float
+  confidence Float
+  source     String   @default("pyth")
+  createdAt  DateTime @default(now())
+
+  @@index([token])
+  @@index([token, createdAt])
+  @@index([createdAt])
+}
+
+model SystemStats {
+  id   String   @id @default(uuid())
+  date DateTime @unique
+
+  totalAccountsMonitored Int
+  totalAlertsGenerated   Int
+  totalProtectiveSwaps   Int
+  totalMevSaved          Float
+  totalValueProtected    Float
+  avgRiskScore           Float
+
+  createdAt DateTime @default(now())
+
+  @@index([date])
+}
