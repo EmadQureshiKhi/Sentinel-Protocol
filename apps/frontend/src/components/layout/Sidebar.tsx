@@ -1,8 +1,9 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, History, Settings, Bell } from 'lucide-react';
+import { LayoutDashboard, History, Settings, Bell, FlaskConical } from 'lucide-react';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/test', icon: FlaskConical, label: 'Test Prediction' },
   { to: '/history', icon: History, label: 'History' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
