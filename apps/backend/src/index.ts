@@ -42,12 +42,15 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Routes will be mounted here
+// Routes
+import testRouter from './api/routes/test';
+app.use('/api/test', testRouter);
+
+// Other routes will be mounted here
 // app.use('/api/accounts', accountsRouter);
 // app.use('/api/alerts', alertsRouter);
 // app.use('/api/protection', protectionRouter);
 // app.use('/api/stats', statsRouter);
-// app.use('/api/health', healthRouter);
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {

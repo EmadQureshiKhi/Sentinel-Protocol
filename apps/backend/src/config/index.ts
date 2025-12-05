@@ -22,6 +22,7 @@ export interface Config {
 
   // Jupiter
   jupiterApiUrl: string;
+  jupiterApiKey: string;
 
   // Database
   databaseUrl: string;
@@ -62,12 +63,14 @@ export const config: Config = {
     ? parsePrivateKey(process.env.WALLET_PRIVATE_KEY)
     : [],
 
+  // Jito only works on mainnet - no devnet/testnet support
   jitoBundleUrl: getEnvVar(
     'JITO_BUNDLE_URL',
-    'https://ny.devnet.block-engine.jito.wtf/api/v1/bundles'
+    'https://mainnet.block-engine.jito.wtf/api/v1/bundles'
   ),
 
   jupiterApiUrl: getEnvVar('JUPITER_API_URL', 'https://api.jup.ag'),
+  jupiterApiKey: process.env.JUPITER_API_KEY || '',
 
   databaseUrl: getEnvVar(
     'DATABASE_URL',

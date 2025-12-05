@@ -7,7 +7,18 @@ const logFormat = printf(({ level, message, timestamp, stack, ...meta }) => {
   let log = `${timestamp} [${level}]: ${message}`;
   
   if (Object.keys(meta).length > 0) {
-    log += ` ${JSON.stringify(meta)}`;
+    try {
+      // Safely stringify, avoiding circular references
+      log += ` ${JSON.stringify(meta, (key, value) => {
+        // Skip circular references and large objects
+        if (key === 'config' || key === 'request' || key === 'response') {
+          return '[Object]';
+        }
+        return value;
+      })}`;
+    } catch (error) {
+      log += ` [Unable to stringify metadata]`;
+    }
   }
   
   if (stack) {
