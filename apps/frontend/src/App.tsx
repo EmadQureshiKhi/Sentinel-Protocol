@@ -1,22 +1,34 @@
-import { Routes, Route } from 'react-router-dom';
-import Layout from './components/layout/Layout';
+import { useState } from 'react';
+import { Routes, Route, useNavigate } from 'react-router-dom';
+import AppLayout from './components/layout/AppLayout';
 import Dashboard from './pages/Dashboard';
-import TestPrediction from './pages/TestPrediction';
-// import AccountDetail from './pages/AccountDetail';
-// import History from './pages/History';
-// import Settings from './pages/Settings';
+import Accounts from './pages/Accounts';
+import Alerts from './pages/Alerts';
+import AccountDetail from './pages/AccountDetail';
+import History from './pages/History';
+import Settings from './pages/Settings';
 
 function App() {
+  const navigate = useNavigate();
+  const [currentPage, setCurrentPage] = useState('dashboard');
+
+  const handlePageChange = (page: string) => {
+    setCurrentPage(page);
+    navigate(page === 'dashboard' ? '/' : `/${page}`);
+  };
+
   return (
-    <Routes>
-      <Route path="/" element={<Layout />}>
+    <AppLayout onPageChange={handlePageChange}>
+      <Routes>
         <Route index element={<Dashboard />} />
-        <Route path="test" element={<TestPrediction />} />
-        {/* <Route path="account/:wallet" element={<AccountDetail />} /> */}
-        {/* <Route path="history" element={<History />} /> */}
-        {/* <Route path="settings" element={<Settings />} /> */}
-      </Route>
-    </Routes>
+        <Route path="dashboard" element={<Dashboard />} />
+        <Route path="accounts" element={<Accounts />} />
+        <Route path="account/:wallet" element={<AccountDetail />} />
+        <Route path="alerts" element={<Alerts />} />
+        <Route path="history" element={<History />} />
+        <Route path="settings" element={<Settings />} />
+      </Routes>
+    </AppLayout>
   );
 }
 
