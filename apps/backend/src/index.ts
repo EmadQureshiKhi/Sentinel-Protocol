@@ -1,100 +1,200 @@
+/**
+ * Liquidation Shield Backend
+ * Main entry point
+ */
+
 import dotenv from 'dotenv';
 dotenv.config();
 
 import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
-import { Server as SocketIOServer } from 'socket.io';
 import { logger } from './utils/logger';
 import { config } from './config';
 
-// Import routes (will be created later)
-// import accountsRouter from './api/routes/accounts';
-// import alertsRouter from './api/routes/alerts';
-// import protectionRouter from './api/routes/protection';
-// import statsRouter from './api/routes/stats';
-// import healthRouter from './api/routes/health';
+// Import routes
+import accountsRouter from './api/routes/accounts';
+import alertsRouter from './api/routes/alerts';
+import protectionRouter from './api/routes/protection';
+import statsRouter from './api/routes/stats';
+import healthRouter from './api/routes/health';
 
-// Import orchestrator (will be created later)
-// import { Orchestrator } from './services/orchestrator';
+// Import middleware
+import { errorHandler, notFoundHandler } from './api/middleware/errorHandler';
+import { standardRateLimiter, swapRateLimiter } from './api/middleware/rateLimit';
 
+// Import services
+import { WebSocketHandler } from './api/websocket/handler';
+import { Orchestrator } from './services/orchestrator';
+import { DatabaseService } from './services/database';
+
+// Initialize Express app
 const app = express();
 const httpServer = createServer(app);
 
-// Socket.IO setup
-const io = new SocketIOServer(httpServer, {
-  cors: {
-    origin: config.corsOrigin,
-    methods: ['GET', 'POST'],
-  },
-});
+// Initialize WebSocket handler
+const wsHandler = new WebSocketHandler(httpServer);
+
+// Initialize services
+let orchestrator: Orchestrator | null = null;
 
 // Middleware
 app.use(cors({ origin: config.corsOrigin }));
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true }));
 
-// Health check endpoint (basic)
-app.get('/api/health', (req, res) => {
+// Request logging
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    if (req.path !== '/api/health/live') {
+      logger.debug(`${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
+    }
+  });
+  next();
+});
+
+// Apply rate limiting
+app.use('/api', standardRateLimiter);
+app.use('/api/protection/execute', swapRateLimiter);
+
+// Mount routes
+app.use('/api/accounts', accountsRouter);
+app.use('/api/alerts', alertsRouter);
+app.use('/api/protection', protectionRouter);
+app.use('/api/stats', statsRouter);
+app.use('/api/health', healthRouter);
+
+// Root endpoint
+app.get('/', (req, res) => {
   res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
+    name: 'Liquidation Shield API',
+    version: '1.0.0',
     network: config.network,
+    timestamp: new Date().toISOString(),
   });
 });
 
-// Routes
-import testRouter from './api/routes/test';
-app.use('/api/test', testRouter);
-
-// Other routes will be mounted here
-// app.use('/api/accounts', accountsRouter);
-// app.use('/api/alerts', alertsRouter);
-// app.use('/api/protection', protectionRouter);
-// app.use('/api/stats', statsRouter);
-
-// Socket.IO connection handling
-io.on('connection', (socket) => {
-  logger.info(`Client connected: ${socket.id}`);
-
-  socket.on('subscribe:account', (walletAddress: string) => {
-    socket.join(`account:${walletAddress}`);
-    logger.debug(`Client ${socket.id} subscribed to account: ${walletAddress}`);
-  });
-
-  socket.on('subscribe:alerts', () => {
-    socket.join('alerts');
-    logger.debug(`Client ${socket.id} subscribed to alerts`);
-  });
-
-  socket.on('disconnect', () => {
-    logger.info(`Client disconnected: ${socket.id}`);
+// API info endpoint
+app.get('/api', (req, res) => {
+  res.json({
+    name: 'Liquidation Shield API',
+    version: '1.0.0',
+    endpoints: {
+      accounts: '/api/accounts',
+      alerts: '/api/alerts',
+      protection: '/api/protection',
+      stats: '/api/stats',
+      health: '/api/health',
+    },
+    websocket: {
+      events: [
+        'account:update',
+        'alert:new',
+        'alert:resolved',
+        'protection:started',
+        'protection:completed',
+        'stats:update',
+        'price:update',
+        'hvix:update',
+      ],
+    },
   });
 });
 
-// Export io for use in other modules
-export { io };
+// 404 handler
+app.use(notFoundHandler);
 
-// Start server
+// Error handler (must be last)
+app.use(errorHandler);
+
+// Export for testing
+export { app, httpServer, wsHandler };
+
+/**
+ * Start the server
+ */
 async function main() {
   try {
     logger.info('🚀 Starting Liquidation Shield Backend...');
     logger.info(`   Network: ${config.network}`);
     logger.info(`   Port: ${config.port}`);
+    logger.info(`   Environment: ${process.env.NODE_ENV || 'development'}`);
 
-    // Initialize orchestrator (will be implemented later)
-    // const orchestrator = new Orchestrator(io);
-    // await orchestrator.start();
+    // Connect to database
+    const database = DatabaseService.getInstance();
+    await database.connect();
 
+    // Initialize orchestrator
+    orchestrator = new Orchestrator({
+      monitoringIntervalMs: 10000,
+      enableAutoProtection: false,
+    });
+
+    // Wire up orchestrator events to WebSocket
+    orchestrator.on('accountUpdate', (data) => {
+      wsHandler.emitAccountUpdate(data);
+    });
+
+    orchestrator.on('alert', (alert) => {
+      wsHandler.emitNewAlert(alert);
+    });
+
+    orchestrator.on('monitoringUpdate', (data) => {
+      wsHandler.emitStatsUpdate({
+        totalAccounts: data.accounts,
+        activeAlerts: data.alerts,
+        atRiskAccounts: 0,
+        totalMevSaved: 0,
+        timestamp: Date.now(),
+      });
+    });
+
+    // Start orchestrator
+    await orchestrator.start();
+
+    // Start HTTP server
     httpServer.listen(config.port, () => {
       logger.info(`✅ Server running on port ${config.port}`);
+      logger.info(`   API: http://localhost:${config.port}/api`);
+      logger.info(`   Health: http://localhost:${config.port}/api/health`);
+      logger.info(`   WebSocket: ws://localhost:${config.port}`);
     });
 
     // Graceful shutdown
-    process.on('SIGINT', async () => {
-      logger.info('Shutting down...');
-      // await orchestrator.shutdown();
+    const shutdown = async (signal: string) => {
+      logger.info(`\n${signal} received. Shutting down gracefully...`);
+      
+      // Stop accepting new connections
       httpServer.close();
+      
+      // Shutdown orchestrator
+      if (orchestrator) {
+        await orchestrator.shutdown();
+      }
+      
+      // Close WebSocket
+      wsHandler.close();
+      
+      // Disconnect database
+      await database.disconnect();
+      
+      logger.info('Shutdown complete');
       process.exit(0);
+    };
+
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+    // Handle uncaught errors
+    process.on('uncaughtException', (error) => {
+      logger.error('Uncaught exception:', error);
+      shutdown('uncaughtException');
+    });
+
+    process.on('unhandledRejection', (reason, promise) => {
+      logger.error('Unhandled rejection at:', promise, 'reason:', reason);
     });
 
   } catch (error) {
@@ -103,4 +203,5 @@ async function main() {
   }
 }
 
+// Run if this is the main module
 main();

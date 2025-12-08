@@ -9,6 +9,8 @@
     "start": "node dist/index.js",
     "test": "jest",
     "test:watch": "jest --watch",
+    "test:prediction": "ts-node tests/test-prediction.ts",
+    "test:execution": "ts-node tests/test-execution.ts",
     "lint": "eslint src/**/*.ts",
     "clean": "rm -rf dist",
     "db:migrate": "prisma migrate dev",
