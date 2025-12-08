@@ -1,0 +1,353 @@
+/**
+ * Strategy Builder
+ * Fluent API for building complex multi-step strategies
+ */
+
+import { TransactionInstruction, PublicKey, Keypair } from '@solana/web3.js';
+import { logger } from '../../utils/logger';
+import { MultiTransactionCoordinator, StrategyStep, MultiTxResult, SplitResult } from './multiTxCoordinator';
+import { JITO_CONFIG } from '../../config/constants';
+
+// Strategy metadata
+export interface StrategyMetadata {
+  name: string;
+  description: string;
+  version: string;
+  createdAt: Date;
+}
+
+// Built strategy ready for execution
+export interface BuiltStrategy {
+  metadata: StrategyMetadata;
+  steps: StrategyStep[];
+  split: SplitResult;
+  estimatedCost: {
+    totalCUs: number;
+    estimatedFee: number;
+    tipAmount: number;
+    bundleCount: number;
+  };
+}
+
+// Validation result
+export interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+export class StrategyBuilder {
+  private steps: StrategyStep[] = [];
+  private metadata: StrategyMetadata;
+  private multiTxCoordinator: MultiTransactionCoordinator;
+
+  constructor(name: string, description: string = '') {
+    this.metadata = {
+      name,
+      description,
+      version: '1.0.0',
+      createdAt: new Date(),
+    };
+    this.multiTxCoordinator = new MultiTransactionCoordinator();
+    
+    logger.debug(`Strategy builder created: ${name}`);
+  }
+
+  /**
+   * Add a step to the strategy
+   */
+  addStep(
+    instruction: TransactionInstruction,
+    options: {
+      estimatedCUs?: number;
+      description?: string;
+      critical?: boolean;
+    } = {}
+  ): StrategyBuilder {
+    const step: StrategyStep = {
+      instruction,
+      estimatedCUs: options.estimatedCUs || 100000,
+      description: options.description || `Step ${this.steps.length + 1}`,
+      critical: options.critical ?? true,
+    };
+
+    this.steps.push(step);
+    return this;
+  }
+
+  /**
+   * Add multiple steps at once
+   */
+  addSteps(steps: StrategyStep[]): StrategyBuilder {
+    this.steps.push(...steps);
+    return this;
+  }
+
+  /**
+   * Add a health check step
+   */
+  addHealthCheck(
+    walletAddress: string,
+    description: string = 'Check health factor'
+  ): StrategyBuilder {
+    const instruction = new TransactionInstruction({
+      programId: new PublicKey('11111111111111111111111111111111'),
+      keys: [
+        { pubkey: new PublicKey(walletAddress), isSigner: false, isWritable: false },
+      ],
+      data: Buffer.from([]),
+    });
+
+    return this.addStep(instruction, {
+      estimatedCUs: 50000,
+      description,
+      critical: true,
+    });
+  }
+
+  /**
+   * Add a swap step (placeholder - would integrate with Jupiter)
+   */
+  addSwap(
+    fromToken: string,
+    toToken: string,
+    amount: number,
+    description?: string
+  ): StrategyBuilder {
+    const instruction = new TransactionInstruction({
+      programId: new PublicKey('JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4'),
+      keys: [],
+      data: Buffer.from([]),
+    });
+
+    return this.addStep(instruction, {
+      estimatedCUs: 300000,
+      description: description || `Swap ${fromToken} to ${toToken}`,
+      critical: true,
+    });
+  }
+
+  /**
+   * Add a deposit step (placeholder)
+   */
+  addDeposit(
+    protocol: string,
+    token: string,
+    amount: number,
+    description?: string
+  ): StrategyBuilder {
+    const instruction = new TransactionInstruction({
+      programId: new PublicKey('11111111111111111111111111111111'),
+      keys: [],
+      data: Buffer.from([]),
+    });
+
+    return this.addStep(instruction, {
+      estimatedCUs: 100000,
+      description: description || `Deposit ${amount} ${token} to ${protocol}`,
+      critical: true,
+    });
+  }
+
+  /**
+   * Add a withdraw step (placeholder)
+   */
+  addWithdraw(
+    protocol: string,
+    token: string,
+    amount: number,
+    description?: string
+  ): StrategyBuilder {
+    const instruction = new TransactionInstruction({
+      programId: new PublicKey('11111111111111111111111111111111'),
+      keys: [],
+      data: Buffer.from([]),
+    });
+
+    return this.addStep(instruction, {
+      estimatedCUs: 100000,
+      description: description || `Withdraw ${amount} ${token} from ${protocol}`,
+      critical: true,
+    });
+  }
+
+  /**
+   * Add a verification step
+   */
+  addVerification(
+    walletAddress: string,
+    condition: string,
+    description?: string
+  ): StrategyBuilder {
+    const instruction = new TransactionInstruction({
+      programId: new PublicKey('11111111111111111111111111111111'),
+      keys: [
+        { pubkey: new PublicKey(walletAddress), isSigner: false, isWritable: false },
+      ],
+      data: Buffer.from([]),
+    });
+
+    return this.addStep(instruction, {
+      estimatedCUs: 50000,
+      description: description || `Verify: ${condition}`,
+      critical: false,
+    });
+  }
+
+  /**
+   * Set strategy metadata
+   */
+  setMetadata(metadata: Partial<StrategyMetadata>): StrategyBuilder {
+    this.metadata = { ...this.metadata, ...metadata };
+    return this;
+  }
+
+  /**
+   * Validate the strategy
+   */
+  validate(): ValidationResult {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    // Check for empty strategy
+    if (this.steps.length === 0) {
+      errors.push('Strategy has no steps');
+    }
+
+    // Check total CUs
+    const totalCUs = this.steps.reduce((sum, s) => sum + s.estimatedCUs, 0);
+    if (totalCUs > 10_000_000) {
+      warnings.push(`High total CUs (${totalCUs}). Strategy may be expensive.`);
+    }
+
+    // Check for critical steps at the end
+    const lastStep = this.steps[this.steps.length - 1];
+    if (lastStep && !lastStep.critical) {
+      warnings.push('Last step is not critical. Consider if this is intentional.');
+    }
+
+    // Check bundle count
+    const split = this.multiTxCoordinator.splitStrategy(this.steps);
+    if (split.bundleCount > 3) {
+      warnings.push(`Strategy requires ${split.bundleCount} bundles. Consider simplifying.`);
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      warnings,
+    };
+  }
+
+  /**
+   * Build the strategy
+   */
+  build(tipLamports: number = JITO_CONFIG.DEFAULT_TIP_LAMPORTS): BuiltStrategy {
+    const validation = this.validate();
+    
+    if (!validation.valid) {
+      throw new Error(`Invalid strategy: ${validation.errors.join(', ')}`);
+    }
+
+    if (validation.warnings.length > 0) {
+      logger.warn('Strategy warnings:', validation.warnings);
+    }
+
+    const split = this.multiTxCoordinator.splitStrategy(this.steps);
+    const estimatedCost = this.multiTxCoordinator.estimateStrategyCost(this.steps, tipLamports);
+
+    logger.info(`Built strategy "${this.metadata.name}" with ${this.steps.length} steps`);
+
+    return {
+      metadata: this.metadata,
+      steps: [...this.steps],
+      split,
+      estimatedCost,
+    };
+  }
+
+  /**
+   * Execute the built strategy
+   */
+  async execute(
+    payer: Keypair,
+    tipLamports: number = JITO_CONFIG.DEFAULT_TIP_LAMPORTS
+  ): Promise<MultiTxResult> {
+    const built = this.build(tipLamports);
+    
+    logger.info(`Executing strategy "${built.metadata.name}"`);
+    
+    return this.multiTxCoordinator.executeStrategy(this.steps, payer, { tipLamports });
+  }
+
+  /**
+   * Get current steps
+   */
+  getSteps(): StrategyStep[] {
+    return [...this.steps];
+  }
+
+  /**
+   * Get step count
+   */
+  getStepCount(): number {
+    return this.steps.length;
+  }
+
+  /**
+   * Estimate cost without building
+   */
+  estimateCost(tipLamports: number = JITO_CONFIG.DEFAULT_TIP_LAMPORTS): {
+    totalCUs: number;
+    estimatedFee: number;
+    tipAmount: number;
+    bundleCount: number;
+  } {
+    return this.multiTxCoordinator.estimateStrategyCost(this.steps, tipLamports);
+  }
+
+  /**
+   * Clear all steps
+   */
+  clear(): StrategyBuilder {
+    this.steps = [];
+    return this;
+  }
+
+  /**
+   * Clone the builder
+   */
+  clone(): StrategyBuilder {
+    const cloned = new StrategyBuilder(this.metadata.name, this.metadata.description);
+    cloned.steps = [...this.steps];
+    cloned.metadata = { ...this.metadata };
+    return cloned;
+  }
+
+  /**
+   * Create a recovery strategy builder
+   */
+  static createRecoveryStrategy(
+    walletAddress: string,
+    protocol: string
+  ): StrategyBuilder {
+    return new StrategyBuilder(`Recovery: ${protocol}`, `Protect position on ${protocol}`)
+      .addHealthCheck(walletAddress, 'Check initial health');
+  }
+
+  /**
+   * Create a rebalance strategy builder
+   */
+  static createRebalanceStrategy(
+    walletAddress: string,
+    fromProtocol: string,
+    toProtocol: string
+  ): StrategyBuilder {
+    return new StrategyBuilder(
+      `Rebalance: ${fromProtocol} -> ${toProtocol}`,
+      `Move position from ${fromProtocol} to ${toProtocol}`
+    );
+  }
+}
+
+export default StrategyBuilder;
