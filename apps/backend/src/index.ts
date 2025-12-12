@@ -18,6 +18,9 @@ import alertsRouter from './api/routes/alerts';
 import protectionRouter from './api/routes/protection';
 import statsRouter from './api/routes/stats';
 import healthRouter from './api/routes/health';
+import ratesRouter from './api/routes/rates';
+import positionsRouter from './api/routes/positions';
+import portfolioRouter from './api/routes/portfolio';
 
 // Import middleware
 import { errorHandler, notFoundHandler } from './api/middleware/errorHandler';
@@ -65,6 +68,9 @@ app.use('/api/alerts', alertsRouter);
 app.use('/api/protection', protectionRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/health', healthRouter);
+app.use('/api/rates', ratesRouter);
+app.use('/api/positions', positionsRouter);
+app.use('/api/portfolio', portfolioRouter);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -87,6 +93,9 @@ app.get('/api', (req, res) => {
       protection: '/api/protection',
       stats: '/api/stats',
       health: '/api/health',
+      rates: '/api/rates',
+      positions: '/api/positions',
+      portfolio: '/api/portfolio',
     },
     websocket: {
       events: [
