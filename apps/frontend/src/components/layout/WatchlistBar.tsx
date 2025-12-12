@@ -76,38 +76,38 @@ const WatchlistBar = () => {
       css={css`
         background: var(--bg-header);
         border-bottom: 1px solid var(--border-subtle);
-        padding: 0.375rem 1.5rem;
+        padding: 0.25rem 1rem;
       `}
     >
       <div
         css={css`
           display: flex;
           align-items: center;
-          gap: 1rem;
-          font-size: 0.75rem;
+          gap: 0.75rem;
+          font-size: 0.6875rem;
         `}
       >
         <div
           css={css`
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.375rem;
             color: var(--text-muted);
-            padding-right: 1rem;
+            padding-right: 0.75rem;
             border-right: 1px solid var(--border-hover);
           `}
         >
-          <span>Watchlist</span>
+          <span css={css`font-size: 0.6875rem;`}>Watchlist</span>
           <button
             css={css`
               background: transparent;
               border: none;
               color: var(--text-muted);
               cursor: pointer;
-              padding: 0.125rem;
+              padding: 0;
               display: flex;
               align-items: center;
-              font-size: 0.875rem;
+              font-size: 0.75rem;
 
               &:hover {
                 color: var(--text-primary);
@@ -122,7 +122,7 @@ const WatchlistBar = () => {
           css={css`
             display: flex;
             align-items: center;
-            gap: 1rem;
+            gap: 0.75rem;
             overflow-x: auto;
             scrollbar-width: none;
             -ms-overflow-style: none;
@@ -138,8 +138,8 @@ const WatchlistBar = () => {
               css={css`
                 display: flex;
                 align-items: center;
-                gap: 0.5rem;
-                padding-right: ${index < watchlistTokens.length - 1 ? '1rem' : '0'};
+                gap: 0.375rem;
+                padding-right: ${index < watchlistTokens.length - 1 ? '0.75rem' : '0'};
                 border-right: ${index < watchlistTokens.length - 1 ? '1px solid var(--border-hover)' : 'none'};
                 white-space: nowrap;
                 flex-shrink: 0;

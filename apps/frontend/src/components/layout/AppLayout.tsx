@@ -2,6 +2,7 @@
 import { css } from '@emotion/react';
 import { ReactNode } from 'react';
 import AppHeader from './AppHeader';
+import DevnetBanner from '../common/DevnetBanner';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -17,6 +18,7 @@ const AppLayout = ({ children, onPageChange }: AppLayoutProps) => {
         min-height: 100vh;
       `}
     >
+      <DevnetBanner />
       <AppHeader onPageChange={onPageChange} />
       <main
         css={css`

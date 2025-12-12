@@ -18,6 +18,9 @@ const navItems: NavItem[] = [
   { id: 'accounts', label: 'Accounts' },
   { id: 'alerts', label: 'Alerts' },
   { id: 'history', label: 'History' },
+  { id: 'rates', label: 'Rates' },
+  { id: 'open-position', label: '+ Open' },
+  { id: 'portfolio', label: 'Portfolio' },
 ];
 
 interface AppHeaderProps {
@@ -71,7 +74,7 @@ const AppHeader = ({ onPageChange }: AppHeaderProps) => {
         css={css`
           background: var(--bg-header);
           border-bottom: 1px solid var(--border-subtle);
-          padding: 0.375rem 0.75rem;
+          padding: 0.25rem 0.75rem;
           position: sticky;
           top: 0;
           z-index: 100;
@@ -101,20 +104,20 @@ const AppHeader = ({ onPageChange }: AppHeaderProps) => {
               css={css`
                 display: flex;
                 align-items: center;
-                gap: 0.5rem;
+                gap: 0.375rem;
                 color: var(--clr-primary);
-                font-size: 1.25rem;
+                font-size: 0.9375rem;
                 font-weight: 700;
-                padding-right: 1rem;
+                padding-right: 0.75rem;
               `}
             >
-              <Shield size={32} weight="fill" />
+              <Shield size={20} weight="fill" />
               <span css={css`
                 @media (max-width: 768px) {
                   display: none;
                 }
               `}>
-                Shield
+                Sentinel
               </span>
             </div>
 
@@ -134,17 +137,16 @@ const AppHeader = ({ onPageChange }: AppHeaderProps) => {
                     key={item.id}
                     onClick={() => handleNavClick(item.id)}
                     css={css`
-                      margin-top: 0.125rem;
                       display: flex;
                       height: 100%;
                       align-items: center;
                       justify-content: center;
-                      font-size: 0.875rem;
+                      font-size: 0.8125rem;
                       line-height: 1.25rem;
                       font-weight: 500;
                       color: ${isActive ? 'var(--clr-primary)' : 'var(--text-secondary)'};
                       width: auto;
-                      padding: 0.5rem 0.5rem;
+                      padding: 0.375rem 0.5rem;
                       background: transparent;
                       border: none;
                       outline: 2px solid transparent;

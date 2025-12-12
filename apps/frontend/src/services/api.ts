@@ -317,6 +317,123 @@ class ApiService {
     const response = await this.client.get('/health/cache');
     return response.data;
   }
+
+  // ==========================================
+  // Rates Endpoints
+  // ==========================================
+
+  async getAllRates(network: string = 'mainnet-beta'): Promise<any> {
+    const response = await this.client.get<ApiResponse<any>>('/rates', {
+      params: { network },
+    });
+    return response.data.data;
+  }
+
+  async getProtocolRates(protocol: string, network: string = 'mainnet-beta'): Promise<any> {
+    const response = await this.client.get<ApiResponse<any>>(`/rates/${protocol.toLowerCase()}`, {
+      params: { network },
+    });
+    return response.data.data;
+  }
+
+  async compareTokenRates(token: string, network: string = 'mainnet-beta'): Promise<any> {
+    const response = await this.client.get<ApiResponse<any>>(`/rates/compare/${token}`, {
+      params: { network },
+    });
+    return response.data.data;
+  }
+
+  async getBestRates(network: string = 'mainnet-beta'): Promise<any> {
+    const response = await this.client.get<ApiResponse<any>>('/rates/best', {
+      params: { network },
+    });
+    return response.data.data;
+  }
+
+  // ==========================================
+  // Positions Endpoints
+  // ==========================================
+
+  async getPositionQuote(params: {
+    walletAddress: string;
+    collateralToken: string;
+    collateralAmount: number;
+    borrowToken: string;
+    leverage: number;
+    network?: string;
+    protocol?: string;
+  }): Promise<any> {
+    const response = await this.client.post<ApiResponse<any>>('/positions/quote', params);
+    return response.data.data;
+  }
+
+  async openPosition(params: {
+    walletAddress: string;
+    protocol: string;
+    collateralToken: string;
+    collateralMint: string;
+    collateralAmount: number;
+    borrowToken: string;
+    borrowMint: string;
+    borrowAmount: number;
+    leverage: number;
+    slippageBps?: number;
+    network?: string;
+    autoMonitor?: boolean;
+    enableAlerts?: boolean;
+  }): Promise<any> {
+    const response = await this.client.post<ApiResponse<any>>('/positions/open', params);
+    return response.data;
+  }
+
+  async getUserPositions(walletAddress: string, params?: { status?: string; network?: string }): Promise<any[]> {
+    const response = await this.client.get<ApiResponse<any[]>>('/positions', {
+      params: { walletAddress, ...params },
+    });
+    return response.data.data || [];
+  }
+
+  async getPosition(id: string): Promise<any> {
+    const response = await this.client.get<ApiResponse<any>>(`/positions/${id}`);
+    return response.data.data;
+  }
+
+  async closePosition(id: string, params: { walletAddress: string; slippageBps?: number; network?: string }): Promise<any> {
+    const response = await this.client.post<ApiResponse<any>>(`/positions/${id}/close`, params);
+    return response.data;
+  }
+
+  // ==========================================
+  // Portfolio Endpoints
+  // ==========================================
+
+  async getPortfolio(walletAddress: string, network: string = 'mainnet-beta'): Promise<any> {
+    const response = await this.client.get<ApiResponse<any>>('/portfolio', {
+      params: { walletAddress, network },
+    });
+    return response.data.data;
+  }
+
+  async getPortfolioPositions(walletAddress: string, network: string = 'mainnet-beta'): Promise<any[]> {
+    const response = await this.client.get<ApiResponse<any[]>>('/portfolio/positions', {
+      params: { walletAddress, network },
+    });
+    return response.data.data || [];
+  }
+
+  async getPortfolioHistory(walletAddress: string, days: number = 30, network: string = 'mainnet-beta'): Promise<any[]> {
+    const response = await this.client.get<ApiResponse<any[]>>('/portfolio/history', {
+      params: { walletAddress, days, network },
+    });
+    return response.data.data || [];
+  }
+
+  async getPortfolioPnL(walletAddress: string, network: string = 'mainnet-beta'): Promise<any> {
+    const response = await this.client.get<ApiResponse<any>>('/portfolio/pnl', {
+      params: { walletAddress, network },
+    });
+    return response.data.data;
+  }
 }
 
 // Export singleton instance

@@ -7,6 +7,9 @@ import Alerts from './pages/Alerts';
 import AccountDetail from './pages/AccountDetail';
 import History from './pages/History';
 import Settings from './pages/Settings';
+import Rates from './pages/Rates';
+import OpenPosition from './pages/OpenPosition';
+import Portfolio from './pages/Portfolio';
 
 function App() {
   const navigate = useNavigate();
@@ -26,6 +29,9 @@ function App() {
         <Route path="account/:wallet" element={<AccountDetail />} />
         <Route path="alerts" element={<Alerts />} />
         <Route path="history" element={<History />} />
+        <Route path="rates" element={<Rates />} />
+        <Route path="open-position" element={<OpenPosition />} />
+        <Route path="portfolio" element={<Portfolio />} />
         <Route path="settings" element={<Settings />} />
       </Routes>
     </AppLayout>
