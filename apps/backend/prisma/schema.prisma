@@ -180,3 +180,82 @@ model SystemStats {
 
   @@index([date])
 }
+
+// ===========================================
+// Leverage Position Models
+// ===========================================
+
+enum PositionStatus {
+  OPEN
+  CLOSED
+  LIQUIDATED
+}
+
+enum Network {
+  MAINNET
+  DEVNET
+}
+
+model Position {
+  id            String         @id @default(uuid())
+  walletAddress String
+  protocol      Protocol
+  network       Network        @default(MAINNET)
+  status        PositionStatus @default(OPEN)
+
+  // Collateral
+  collateralToken  String
+  collateralMint   String
+  collateralAmount Float
+
+  // Borrow
+  borrowToken  String
+  borrowMint   String
+  borrowAmount Float
+
+  // Position metrics at open
+  leverage          Float
+  entryPrice        Float
+  liquidationPrice  Float
+  openHealthFactor  Float
+
+  // Current metrics (updated periodically)
+  currentHealthFactor Float?
+  currentValue        Float?
+  unrealizedPnl       Float?
+
+  // Transaction info
+  openTxSignature  String?
+  closeTxSignature String?
+
+  openedAt DateTime  @default(now())
+  closedAt DateTime?
+
+  history PositionHistory[]
+
+  @@index([walletAddress])
+  @@index([walletAddress, status])
+  @@index([protocol])
+  @@index([status])
+  @@index([openedAt])
+}
+
+model PositionHistory {
+  id         String   @id @default(uuid())
+  positionId String
+  position   Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
+
+  // Snapshot data
+  healthFactor     Float
+  collateralValue  Float
+  borrowValue      Float
+  liquidationPrice Float
+  oraclePrice      Float
+  unrealizedPnl    Float
+
+  createdAt DateTime @default(now())
+
+  @@index([positionId])
+  @@index([positionId, createdAt])
+  @@index([createdAt])
+}
