@@ -26,7 +26,7 @@ export interface PortfolioSummary {
 
 export interface PortfolioPosition {
   id: string;
-  protocol: 'DRIFT' | 'MARGINFI' | 'SOLEND';
+  protocol: 'DRIFT' | 'KAMINO' | 'SAVE' | 'LOOPSCALE';
   network: string;
   status: 'OPEN' | 'CLOSED' | 'LIQUIDATED';
   collateralToken: string;

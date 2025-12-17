@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ConnectionProvider, WalletProvider as SolanaWalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
-import { WalletProvider, NetworkProvider, ToastProvider } from './contexts';
+import { WalletProvider, NetworkProvider, ToastProvider, useNetwork } from './contexts';
 import App from './App';
 import './index.css';
 
@@ -22,35 +22,40 @@ const queryClient = new QueryClient({
   },
 });
 
-// Get network from localStorage or default to devnet
-const network = (localStorage.getItem('solana_network') || 'devnet') as 'mainnet-beta' | 'devnet';
-const endpoint = network === 'mainnet-beta'
-  ? import.meta.env.VITE_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com'
-  : 'https://api.devnet.solana.com';
-
 // Wallet adapters
 const wallets = [
   new PhantomWalletAdapter(),
   new SolflareWalletAdapter(),
 ];
 
+// Inner component that uses network context for dynamic endpoint
+const SolanaProviders: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { rpcEndpoint } = useNetwork();
+  
+  return (
+    <ConnectionProvider endpoint={rpcEndpoint} config={{ commitment: 'confirmed' }}>
+      <SolanaWalletProvider wallets={wallets} autoConnect>
+        <WalletModalProvider>
+          <WalletProvider>
+            {children}
+          </WalletProvider>
+        </WalletModalProvider>
+      </SolanaWalletProvider>
+    </ConnectionProvider>
+  );
+};
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <NetworkProvider>
-        <ConnectionProvider endpoint={endpoint}>
-          <SolanaWalletProvider wallets={wallets} autoConnect>
-            <WalletModalProvider>
-              <WalletProvider>
-                <ToastProvider>
-                  <BrowserRouter>
-                    <App />
-                  </BrowserRouter>
-                </ToastProvider>
-              </WalletProvider>
-            </WalletModalProvider>
-          </SolanaWalletProvider>
-        </ConnectionProvider>
+        <SolanaProviders>
+          <ToastProvider>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </ToastProvider>
+        </SolanaProviders>
       </NetworkProvider>
     </QueryClientProvider>
   </React.StrictMode>

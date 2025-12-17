@@ -23,7 +23,7 @@ export interface TokenRate {
 }
 
 export interface ProtocolRates {
-  protocol: 'DRIFT' | 'MARGINFI' | 'SOLEND';
+  protocol: 'DRIFT' | 'KAMINO' | 'SAVE' | 'LOOPSCALE';
   network: string;
   rates: TokenRate[];
   tvl: number;
@@ -73,15 +73,18 @@ export function useAllRates() {
   return useQuery({
     queryKey: ratesKeys.aggregated(network),
     queryFn: () => api.getAllRates(network),
-    staleTime: 5000, // 5 seconds
-    refetchInterval: 5000, // Refetch every 5 seconds for real-time updates
+    staleTime: 30000, // Consider data fresh for 30 seconds
+    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
+    refetchInterval: 10000, // Refetch every 10 seconds in background
+    refetchOnMount: false, // Don't refetch on mount if data exists
+    refetchOnWindowFocus: false, // Don't refetch on window focus
   });
 }
 
 /**
  * Get rates for a specific protocol
  */
-export function useProtocolRates(protocol: 'DRIFT' | 'MARGINFI' | 'SOLEND') {
+export function useProtocolRates(protocol: 'DRIFT' | 'KAMINO' | 'SAVE' | 'LOOPSCALE') {
   const { network } = useNetwork();
   
   return useQuery({

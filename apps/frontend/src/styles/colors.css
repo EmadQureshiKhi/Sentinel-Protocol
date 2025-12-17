@@ -54,14 +54,17 @@
   --clr-primary-hover: rgba(220, 253, 143, 0.15);
 
   /* Background Colors */
+  --bg-base: #0a0a0f;
   --bg-body: #0a0e27;
   --bg-header: #0c0d10;
-  --bg-surface: rgba(255, 255, 255, 0.03);
-  --bg-surface-hover: rgba(255, 255, 255, 0.05);
+  --bg-surface: #12141a;
+  --bg-surface-hover: #181a22;
+  --bg-card: #14161e;
 
   /* Text Colors */
   --text-primary: #ffffff;
-  --text-secondary: rgba(144, 161, 185, 1);
+  --text-secondary: #90a1b9;
+  --text-tertiary: #5a6a7a;
   --text-muted: #8b8b8b;
   --text-accent: #dcfd8f;
 
@@ -72,6 +75,9 @@
   --status-danger: #ff4d4d;
   --status-danger-bg: rgba(255, 77, 77, 0.1);
   --status-danger-border: rgba(255, 77, 77, 0.3);
+  --status-error: #ff6464;
+  --status-error-bg: rgba(255, 100, 100, 0.1);
+  --status-error-border: rgba(255, 100, 100, 0.3);
   --status-warning: #fbbf24;
   --status-warning-bg: rgba(251, 191, 36, 0.1);
   --status-warning-border: rgba(251, 191, 36, 0.3);

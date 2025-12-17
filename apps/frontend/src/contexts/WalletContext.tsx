@@ -89,16 +89,35 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return () => clearTimeout(timer);
   }, []);
 
-  // Fetch SOL balance
+  // Fetch SOL balance with retry
   const fetchBalance = useCallback(async (pubKey: PublicKey): Promise<string> => {
-    try {
-      const balance = await solanaConnection.getBalance(pubKey);
-      return (balance / LAMPORTS_PER_SOL).toFixed(4);
-    } catch (err) {
-      console.error('Error fetching balance:', err);
-      return '0';
+    const maxRetries = 3;
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const balance = await solanaConnection.getBalance(pubKey, 'confirmed');
+        console.log('Fetched balance:', balance / LAMPORTS_PER_SOL, 'SOL');
+        return (balance / LAMPORTS_PER_SOL).toFixed(4);
+      } catch (err) {
+        console.error(`Error fetching balance (attempt ${i + 1}):`, err);
+        if (i < maxRetries - 1) {
+          await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+        }
+      }
     }
+    return '0';
   }, [solanaConnection]);
+
+  // Fetch SOL price
+  const fetchSolPrice = useCallback(async (): Promise<number> => {
+    try {
+      const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+      const data = await res.json();
+      return data.solana?.usd || 0;
+    } catch (err) {
+      console.error('Error fetching SOL price:', err);
+      return 0;
+    }
+  }, []);
 
   // Refresh balance
   const refreshBalance = useCallback(async () => {
@@ -111,13 +130,19 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     } : null);
   }, [publicKey, walletConnection, fetchBalance]);
 
-  // Update wallet connection when Solana wallet connects
+  // Update wallet connection when Solana wallet connects or connection changes (network switch)
   useEffect(() => {
     const updateConnection = async () => {
       if (connected && publicKey && wallet) {
-        const balance = await fetchBalance(publicKey);
-        const network = (localStorage.getItem('solana_network') || 'devnet') as 'mainnet-beta' | 'devnet';
+        console.log('Updating wallet connection for:', publicKey.toBase58());
+        console.log('RPC endpoint:', solanaConnection.rpcEndpoint);
         
+        const [balance, solPrice] = await Promise.all([
+          fetchBalance(publicKey),
+          fetchSolPrice(),
+        ]);
+        
+        const network = (localStorage.getItem('sentinel_network') || 'devnet') as 'mainnet-beta' | 'devnet';
         const walletId = wallet.adapter.name.toLowerCase().includes('phantom') ? 'phantom' : 'solflare';
         
         setWalletConnection({
@@ -136,6 +161,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
               balance,
               decimals: 9,
               logo: '/assets/tokens/sol.svg',
+              price: solPrice,
             }],
           },
           network,
@@ -149,7 +175,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
 
     updateConnection();
-  }, [connected, publicKey, wallet, fetchBalance]);
+  }, [connected, publicKey, wallet, fetchBalance, fetchSolPrice, solanaConnection]);
 
   const connect = useCallback(async (walletId: 'phantom' | 'solflare') => {
     setIsConnecting(true);

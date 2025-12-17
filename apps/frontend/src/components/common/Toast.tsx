@@ -26,7 +26,7 @@ const slideOut = keyframes`
 
 export interface ToastProps {
   id: string;
-  type: 'success' | 'error';
+  type: 'success' | 'error' | 'info' | 'warning';
   title: string;
   message?: string;
   txSignature?: string;
@@ -59,7 +59,12 @@ export default function Toast({
         min-width: 350px;
         max-width: 400px;
         background: rgba(12, 13, 16, 0.98);
-        border: 1px solid ${type === 'success' ? 'rgba(220, 253, 143, 0.3)' : 'rgba(255, 100, 100, 0.3)'};
+        border: 1px solid ${
+          type === 'success' ? 'rgba(220, 253, 143, 0.3)' : 
+          type === 'info' ? 'rgba(96, 165, 250, 0.3)' :
+          type === 'warning' ? 'rgba(251, 191, 36, 0.3)' :
+          'rgba(255, 100, 100, 0.3)'
+        };
         border-radius: 12px;
         padding: 1rem;
         margin-bottom: 0.75rem;
@@ -110,6 +115,10 @@ export default function Toast({
         >
           {type === 'success' ? (
             <CheckCircle size={24} color="#dcfd8f" weight="fill" />
+          ) : type === 'info' ? (
+            <CheckCircle size={24} color="#60a5fa" weight="fill" />
+          ) : type === 'warning' ? (
+            <XCircle size={24} color="#fbbf24" weight="fill" />
           ) : (
             <XCircle size={24} color="#ff6464" weight="fill" />
           )}
@@ -126,7 +135,12 @@ export default function Toast({
             css={css`
               font-weight: 700;
               font-size: 0.9375rem;
-              color: ${type === 'success' ? '#dcfd8f' : '#ff6464'};
+              color: ${
+                type === 'success' ? '#dcfd8f' : 
+                type === 'info' ? '#60a5fa' :
+                type === 'warning' ? '#fbbf24' :
+                '#ff6464'
+              };
               margin-bottom: 0.25rem;
             `}
           >

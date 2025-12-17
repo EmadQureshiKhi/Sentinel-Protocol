@@ -17,7 +17,7 @@ export interface ApiResponse<T> {
 export interface Account {
   id: string;
   walletAddress: string;
-  protocol: 'DRIFT' | 'MARGINFI' | 'SOLEND';
+  protocol: 'DRIFT' | 'KAMINO' | 'SAVE' | 'LOOPSCALE';
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -359,7 +359,7 @@ class ApiService {
     collateralToken: string;
     collateralAmount: number;
     borrowToken: string;
-    leverage: number;
+    leverage?: number;
     network?: string;
     protocol?: string;
   }): Promise<any> {
@@ -401,6 +401,34 @@ class ApiService {
   async closePosition(id: string, params: { walletAddress: string; slippageBps?: number; network?: string }): Promise<any> {
     const response = await this.client.post<ApiResponse<any>>(`/positions/${id}/close`, params);
     return response.data;
+  }
+
+  async confirmPosition(params: {
+    walletAddress: string;
+    protocol: string;
+    network: string;
+    collateralToken: string;
+    collateralMint: string;
+    collateralAmount: number;
+    borrowToken: string;
+    borrowMint: string;
+    borrowAmount: number;
+    leverage: number;
+    entryPrice: number;
+    liquidationPrice: number;
+    healthFactor: number;
+    txSignature: string;
+    autoMonitor: boolean;
+  }): Promise<any> {
+    const response = await this.client.post<ApiResponse<any>>('/positions/confirm', params);
+    return response.data;
+  }
+
+  async getTransactionHistory(walletAddress: string, limit: number = 50): Promise<any[]> {
+    const response = await this.client.get<ApiResponse<any[]>>('/positions/history/transactions', {
+      params: { walletAddress, limit },
+    });
+    return response.data.data || [];
   }
 
   // ==========================================
