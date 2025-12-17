@@ -209,18 +209,62 @@ export class Orchestrator extends EventEmitter {
       const riskDataList: AccountRiskData[] = [];
       
       for (const account of accounts) {
-        const latestSnapshot = account.snapshots[0];
-        if (!latestSnapshot) continue;
+        let riskData: AccountRiskData;
+        
+        // Try to fetch fresh data from Drift
+        try {
+          const positionData = await this.healthCalculator.parseDriftAccountData(account.walletAddress);
+          
+          if (positionData) {
+            const healthMetrics = this.healthCalculator.calculateHealthMetrics(positionData);
+            
+            logger.debug('Health metrics calculated', {
+              wallet: account.walletAddress,
+              healthFactor: healthMetrics.healthFactor,
+              collateral: positionData.collateralValue,
+              debt: positionData.borrowedValue,
+              liquidationThreshold: positionData.liquidationThreshold,
+            });
+            
+            riskData = {
+              walletAddress: account.walletAddress,
+              healthFactor: healthMetrics.healthFactor,
+              collateralValue: positionData.collateralValue,
+              borrowedValue: positionData.borrowedValue,
+              leverage: healthMetrics.leverage,
+              liquidationPrice: positionData.liquidationPrice,
+              oraclePrice: positionData.oraclePrice,
+            };
+          } else {
+            // Fallback to latest snapshot if Drift fetch fails
+            const latestSnapshot = account.snapshots[0];
+            if (!latestSnapshot) continue;
 
-        const riskData: AccountRiskData = {
-          walletAddress: account.walletAddress,
-          healthFactor: latestSnapshot.healthFactor,
-          collateralValue: latestSnapshot.collateralValue,
-          borrowedValue: latestSnapshot.borrowedValue,
-          leverage: latestSnapshot.leverage,
-          liquidationPrice: latestSnapshot.liquidationPrice,
-          oraclePrice: solPrice?.price || 0,
-        };
+            riskData = {
+              walletAddress: account.walletAddress,
+              healthFactor: latestSnapshot.healthFactor,
+              collateralValue: latestSnapshot.collateralValue,
+              borrowedValue: latestSnapshot.borrowedValue,
+              leverage: latestSnapshot.leverage,
+              liquidationPrice: latestSnapshot.liquidationPrice,
+              oraclePrice: solPrice?.price || 0,
+            };
+          }
+        } catch (error) {
+          // Fallback to latest snapshot on error
+          const latestSnapshot = account.snapshots[0];
+          if (!latestSnapshot) continue;
+
+          riskData = {
+            walletAddress: account.walletAddress,
+            healthFactor: latestSnapshot.healthFactor,
+            collateralValue: latestSnapshot.collateralValue,
+            borrowedValue: latestSnapshot.borrowedValue,
+            leverage: latestSnapshot.leverage,
+            liquidationPrice: latestSnapshot.liquidationPrice,
+            oraclePrice: solPrice?.price || 0,
+          };
+        }
 
         riskDataList.push(riskData);
       }
@@ -248,9 +292,9 @@ export class Orchestrator extends EventEmitter {
         );
 
         // Create snapshot
-        await this.database.createSnapshot({
+        const snapshotData = {
           accountId: account.id,
-          healthFactor: riskScore.riskComponents.healthFactorRisk / 40, // Convert back to health factor
+          healthFactor: originalData?.healthFactor || 0,
           collateralValue: originalData?.collateralValue || 0,
           borrowedValue: originalData?.borrowedValue || 0,
           leverage: originalData?.leverage || 1,
@@ -262,7 +306,16 @@ export class Orchestrator extends EventEmitter {
           hvixValue: this.currentHvix,
           cascadeProbability: riskScore.cascadeProbability,
           timeToLiquidation: riskScore.timeToLiquidation,
+        };
+        
+        logger.debug('Creating snapshot', {
+          wallet: account.walletAddress,
+          healthFactor: snapshotData.healthFactor,
+          collateral: snapshotData.collateralValue,
+          debt: snapshotData.borrowedValue,
         });
+        
+        await this.database.createSnapshot(snapshotData);
       }
 
       // 8. Store new alerts
@@ -316,8 +369,8 @@ export class Orchestrator extends EventEmitter {
     try {
       const { walletAddress, accountData } = data;
 
-      // Parse account data and calculate health
-      const positionData = this.healthCalculator.parseDriftAccountData(accountData);
+      // Parse account data and calculate health (Drift only for now)
+      const positionData = await this.healthCalculator.parseDriftAccountData(walletAddress);
       
       if (positionData) {
         // Get account from database

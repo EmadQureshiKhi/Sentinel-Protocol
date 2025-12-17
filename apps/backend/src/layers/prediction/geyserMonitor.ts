@@ -96,7 +96,15 @@ export class GeyserMonitor extends EventEmitter {
       });
 
       this.ws.on('error', (error: Error) => {
-        logger.error('❌ WebSocket error:', error);
+        const errorMessage = error?.message || String(error);
+        
+        // Handle rate limit errors gracefully
+        if (errorMessage.includes('429')) {
+          logger.warn('⚠️ Rate limited by Helius (429). Will retry with backoff.');
+        } else {
+          logger.error('❌ WebSocket error:', errorMessage);
+        }
+        
         this.emit('error', error);
         if (!this.isConnected) {
           reject(error);
@@ -128,22 +136,44 @@ export class GeyserMonitor extends EventEmitter {
    * Handle auto-reconnection with exponential backoff
    */
   private async _handleReconnect(): Promise<void> {
+    if (this.isShuttingDown) {
+      return;
+    }
+    
     logger.info('Attempting to reconnect to Geyser...');
     
-    await reconnectWithBackoff(
-      async () => {
-        await this.initialize();
-        // Re-subscribe to all protocols and wallets
-        await this._resubscribeAll();
-      },
-      {
-        baseDelayMs: TIMING.GEYSER_RECONNECT_BASE_MS,
-        maxDelayMs: TIMING.GEYSER_RECONNECT_MAX_MS,
-        onAttempt: (attempt, delay) => {
-          logger.info(`Reconnection attempt ${attempt}, next retry in ${delay}ms`);
+    try {
+      await reconnectWithBackoff(
+        async () => {
+          if (this.isShuttingDown) {
+            throw new Error('Shutdown in progress');
+          }
+          await this.initialize();
+          // Re-subscribe to all protocols and wallets
+          await this._resubscribeAll();
         },
+        {
+          baseDelayMs: TIMING.GEYSER_RECONNECT_BASE_MS,
+          maxDelayMs: TIMING.GEYSER_RECONNECT_MAX_MS,
+          maxAttempts: 10,
+          onAttempt: (attempt, delay) => {
+            logger.info(`Reconnection attempt ${attempt}, next retry in ${delay}ms`);
+          },
+        }
+      );
+    } catch (error: any) {
+      // Handle rate limit (429) errors gracefully
+      if (error?.message?.includes('429')) {
+        logger.warn('Rate limited by Helius. Waiting 60 seconds before retry...');
+        await new Promise(resolve => setTimeout(resolve, 60000));
+        if (!this.isShuttingDown) {
+          this._handleReconnect();
+        }
+      } else {
+        logger.error('Failed to reconnect to Geyser after multiple attempts', { error: error?.message });
+        this.emit('reconnectFailed', error);
       }
-    );
+    }
   }
 
   /**

@@ -219,23 +219,31 @@ export class CascadeDetector {
    * Estimate time until liquidation in hours
    */
   private _estimateTimeToLiquidation(account: AccountRiskData): number {
+    // For safe positions (health factor > 2.0), return 0 to indicate "N/A"
+    if (account.healthFactor >= 2.0) {
+      return 0; // Safe - no immediate risk
+    }
+
     // Calculate price distance to liquidation
     const priceDistance = Math.abs(
       (account.oraclePrice - account.liquidationPrice) / account.oraclePrice
     );
 
     // Rough estimate based on health factor
-    if (account.healthFactor < 0.2) {
+    if (account.healthFactor < 1.1) {
       return 6; // Critical - 6 hours
     }
-    if (account.healthFactor < 0.3) {
+    if (account.healthFactor < 1.3) {
       return 12; // Danger - 12 hours
     }
-    if (account.healthFactor < 0.5) {
+    if (account.healthFactor < 1.5) {
       return 24; // Caution - 24 hours
     }
+    if (account.healthFactor < 2.0) {
+      return 48; // Moderate risk - 48 hours
+    }
 
-    return 48; // Safe for now
+    return 0; // Safe - no immediate risk
   }
 
   /**
