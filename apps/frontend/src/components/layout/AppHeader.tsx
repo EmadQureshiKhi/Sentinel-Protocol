@@ -15,12 +15,10 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard' },
-  { id: 'accounts', label: 'Accounts' },
-  { id: 'alerts', label: 'Alerts' },
-  { id: 'history', label: 'History' },
-  { id: 'rates', label: 'Rates' },
-  { id: 'open-position', label: '+ Open' },
+  { id: 'open-position', label: 'Position' },
   { id: 'portfolio', label: 'Portfolio' },
+  { id: 'rates', label: 'Rates' },
+  { id: 'history', label: 'History' },
 ];
 
 interface AppHeaderProps {

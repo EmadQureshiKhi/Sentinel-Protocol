@@ -10,7 +10,7 @@ export default function Accounts() {
   const navigate = useNavigate();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newWallet, setNewWallet] = useState('');
-  const [newProtocol, setNewProtocol] = useState<'DRIFT' | 'MARGINFI' | 'SOLEND'>('DRIFT');
+  const [newProtocol, setNewProtocol] = useState<'DRIFT' | 'KAMINO' | 'SAVE' | 'LOOPSCALE'>('DRIFT');
   
   const { data: accounts, isLoading } = useAccounts({ isActive: true });
   const addAccountMutation = useAddAccount();
@@ -448,8 +448,9 @@ export default function Accounts() {
               `}
             >
               <option value="DRIFT">Drift</option>
-              <option value="MARGINFI">Marginfi</option>
-              <option value="SOLEND">Solend</option>
+              <option value="KAMINO">Kamino</option>
+              <option value="SAVE">Save</option>
+              <option value="LOOPSCALE">Loopscale</option>
             </select>
           </div>
 

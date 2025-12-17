@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { css } from '@emotion/react';
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+
 import {
   Shield,
   ArrowSquareOut,
@@ -11,29 +11,30 @@ import {
   XCircle,
   Clock,
 } from '@phosphor-icons/react';
-import { useProtectionHistory } from '../hooks/useProtection';
-import { useMevSavings } from '../hooks/useStats';
+import { useTransactionHistory } from '../hooks/usePositions';
+import { useWallet } from '../contexts/WalletContext';
 import { LoadingSpinner } from '../components/common';
 
-type StatusFilter = 'all' | 'CONFIRMED' | 'PENDING' | 'FAILED';
+type StatusFilter = 'all' | 'CONFIRMED' | 'PENDING' | 'FAILED' | 'OPEN' | 'CLOSED';
 
 export default function History() {
-  const navigate = useNavigate();
+  const { connection } = useWallet();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   
-  const { data: swaps, isLoading } = useProtectionHistory({ limit: 100 });
-  const { data: mevStats } = useMevSavings();
+  const { data: transactions, isLoading } = useTransactionHistory(connection?.account.publicKey, 100);
 
-  const filteredSwaps = swaps?.filter((swap) => {
+  const filteredTransactions = transactions?.filter((tx) => {
     if (statusFilter === 'all') return true;
-    return swap.status === statusFilter;
+    return tx.status === statusFilter;
   });
 
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'CONFIRMED':
+      case 'OPEN':
         return <CheckCircle size={16} weight="fill" />;
       case 'FAILED':
+      case 'LIQUIDATED':
         return <XCircle size={16} weight="fill" />;
       default:
         return <Clock size={16} weight="fill" />;
@@ -43,9 +44,13 @@ export default function History() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'CONFIRMED':
+      case 'OPEN':
         return { bg: 'rgba(220, 253, 143, 0.1)', border: 'rgba(220, 253, 143, 0.3)', text: '#dcfd8f' };
       case 'FAILED':
+      case 'LIQUIDATED':
         return { bg: 'rgba(255, 100, 100, 0.1)', border: 'rgba(255, 100, 100, 0.3)', text: '#ff6464' };
+      case 'CLOSED':
+        return { bg: 'rgba(100, 100, 255, 0.1)', border: 'rgba(100, 100, 255, 0.3)', text: '#6464ff' };
       default:
         return { bg: 'rgba(255, 165, 0, 0.1)', border: 'rgba(255, 165, 0, 0.3)', text: '#ffa500' };
     }
@@ -133,7 +138,7 @@ export default function History() {
                 color: #fff;
               `}
             >
-              {swaps?.length || 0}
+              {transactions?.length || 0}
             </div>
           </div>
           
@@ -171,7 +176,7 @@ export default function History() {
                 color: #dcfd8f;
               `}
             >
-              ${mevStats?.totalMevSavedUsd?.toFixed(2) || '0.00'}
+              ${transactions?.reduce((sum, tx) => sum + (tx.details.mevSaved || 0), 0).toFixed(2) || '0.00'}
             </div>
           </div>
           
@@ -209,8 +214,8 @@ export default function History() {
                 color: #fff;
               `}
             >
-              {swaps && swaps.length > 0
-                ? `${((swaps.filter(s => s.status === 'CONFIRMED').length / swaps.length) * 100).toFixed(0)}%`
+              {transactions && transactions.length > 0
+                ? `${((transactions.filter(t => t.status === 'CONFIRMED' || t.status === 'OPEN').length / transactions.length) * 100).toFixed(0)}%`
                 : '0%'}
             </div>
           </div>
@@ -248,7 +253,7 @@ export default function History() {
               gap: 0.5rem;
             `}
           >
-            {(['all', 'CONFIRMED', 'PENDING', 'FAILED'] as StatusFilter[]).map((status) => (
+            {(['all', 'CONFIRMED', 'OPEN', 'PENDING', 'FAILED'] as StatusFilter[]).map((status) => (
               <button
                 key={status}
                 onClick={() => setStatusFilter(status)}
@@ -295,7 +300,7 @@ export default function History() {
             >
               <LoadingSpinner size="lg" />
             </div>
-          ) : filteredSwaps && filteredSwaps.length > 0 ? (
+          ) : filteredTransactions && filteredTransactions.length > 0 ? (
             <div
               css={css`
                 overflow-x: auto;
@@ -315,20 +320,19 @@ export default function History() {
                     `}
                   >
                     <th css={css`padding: 1rem 1.5rem; text-align: left; font-size: 0.875rem; font-weight: 600; color: #a0a0a0;`}>Date</th>
-                    <th css={css`padding: 1rem 1.5rem; text-align: left; font-size: 0.875rem; font-weight: 600; color: #a0a0a0;`}>Account</th>
-                    <th css={css`padding: 1rem 1.5rem; text-align: left; font-size: 0.875rem; font-weight: 600; color: #a0a0a0;`}>Swap</th>
-                    <th css={css`padding: 1rem 1.5rem; text-align: left; font-size: 0.875rem; font-weight: 600; color: #a0a0a0;`}>Amount</th>
-                    <th css={css`padding: 1rem 1.5rem; text-align: left; font-size: 0.875rem; font-weight: 600; color: #a0a0a0;`}>MEV Saved</th>
+                    <th css={css`padding: 1rem 1.5rem; text-align: left; font-size: 0.875rem; font-weight: 600; color: #a0a0a0;`}>Type</th>
+                    <th css={css`padding: 1rem 1.5rem; text-align: left; font-size: 0.875rem; font-weight: 600; color: #a0a0a0;`}>Protocol</th>
+                    <th css={css`padding: 1rem 1.5rem; text-align: left; font-size: 0.875rem; font-weight: 600; color: #a0a0a0;`}>Details</th>
                     <th css={css`padding: 1rem 1.5rem; text-align: left; font-size: 0.875rem; font-weight: 600; color: #a0a0a0;`}>Status</th>
                     <th css={css`padding: 1rem 1.5rem; text-align: left; font-size: 0.875rem; font-weight: 600; color: #a0a0a0;`}>Explorer</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredSwaps.map((swap) => {
-                    const statusColors = getStatusColor(swap.status);
+                  {filteredTransactions.map((tx) => {
+                    const statusColors = getStatusColor(tx.status);
                     return (
                       <tr
-                        key={swap.id}
+                        key={tx.id}
                         css={css`
                           border-bottom: 1px solid rgba(255, 255, 255, 0.05);
                           transition: background 0.2s;
@@ -339,50 +343,33 @@ export default function History() {
                         `}
                       >
                         <td css={css`padding: 1rem 1.5rem; font-size: 0.875rem; color: #fff;`}>
-                          {new Date(swap.createdAt).toLocaleDateString()}
+                          {new Date(tx.timestamp).toLocaleDateString()}
                           <div css={css`font-size: 0.75rem; color: #666; margin-top: 0.25rem;`}>
-                            {new Date(swap.createdAt).toLocaleTimeString()}
+                            {new Date(tx.timestamp).toLocaleTimeString()}
                           </div>
-                        </td>
-                        <td css={css`padding: 1rem 1.5rem;`}>
-                          <button
-                            onClick={() => navigate(`/account/${swap.account?.walletAddress}`)}
-                            css={css`
-                              font-family: 'Courier New', monospace;
-                              font-size: 0.875rem;
-                              color: #dcfd8f;
-                              background: none;
-                              border: none;
-                              cursor: pointer;
-                              transition: color 0.2s;
-
-                              &:hover {
-                                color: #fff;
-                              }
-                            `}
-                          >
-                            {swap.account?.walletAddress?.slice(0, 6)}...
-                            {swap.account?.walletAddress?.slice(-4)}
-                          </button>
-                        </td>
-                        <td css={css`padding: 1rem 1.5rem; font-size: 0.875rem;`}>
-                          <span css={css`color: #fff;`}>{swap.fromToken}</span>
-                          <span css={css`color: #666; margin: 0 0.5rem;`}>→</span>
-                          <span css={css`color: #fff;`}>{swap.toToken}</span>
                         </td>
                         <td css={css`padding: 1rem 1.5rem; font-size: 0.875rem; color: #fff;`}>
-                          <div>{(swap.inputAmount / 1e9).toFixed(4)}</div>
-                          <div css={css`font-size: 0.75rem; color: #666; margin-top: 0.25rem;`}>
-                            → {(swap.outputAmount / 1e6).toFixed(2)}
-                          </div>
+                          {tx.type === 'POSITION_OPEN' ? 'Position' : 'Swap'}
                         </td>
-                        <td css={css`padding: 1rem 1.5rem;`}>
-                          {swap.mevSaved ? (
-                            <span css={css`color: #dcfd8f; font-weight: 600; font-size: 0.875rem;`}>
-                              +${(swap.mevSaved / 1e9 * 140).toFixed(2)}
-                            </span>
+                        <td css={css`padding: 1rem 1.5rem; font-size: 0.875rem; color: #dcfd8f;`}>
+                          {tx.protocol}
+                        </td>
+                        <td css={css`padding: 1rem 1.5rem; font-size: 0.875rem;`}>
+                          {tx.type === 'POSITION_OPEN' ? (
+                            <>
+                              <span css={css`color: #fff;`}>{tx.details.collateralToken}</span>
+                              <span css={css`color: #666; margin: 0 0.5rem;`}>→</span>
+                              <span css={css`color: #fff;`}>{tx.details.borrowToken}</span>
+                              <div css={css`font-size: 0.75rem; color: #666; margin-top: 0.25rem;`}>
+                                {tx.details.leverage?.toFixed(1)}x leverage
+                              </div>
+                            </>
                           ) : (
-                            <span css={css`color: #666; font-size: 0.875rem;`}>-</span>
+                            <>
+                              <span css={css`color: #fff;`}>{tx.details.fromToken}</span>
+                              <span css={css`color: #666; margin: 0 0.5rem;`}>→</span>
+                              <span css={css`color: #fff;`}>{tx.details.toToken}</span>
+                            </>
                           )}
                         </td>
                         <td css={css`padding: 1rem 1.5rem;`}>
@@ -400,14 +387,14 @@ export default function History() {
                               color: ${statusColors.text};
                             `}
                           >
-                            {getStatusIcon(swap.status)}
-                            {swap.status}
+                            {getStatusIcon(tx.status)}
+                            {tx.status}
                           </span>
                         </td>
                         <td css={css`padding: 1rem 1.5rem;`}>
-                          {swap.transactionSignature ? (
+                          {tx.txSignature ? (
                             <a
-                              href={`https://solscan.io/tx/${swap.transactionSignature}`}
+                              href={`https://solscan.io/tx/${tx.txSignature}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               css={css`

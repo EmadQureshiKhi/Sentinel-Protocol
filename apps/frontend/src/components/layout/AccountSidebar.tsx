@@ -1,7 +1,8 @@
 /** @jsxImportSource @emotion/react */
 import { css, keyframes } from '@emotion/react';
-import { X, Copy, Eye, EyeSlash, SignOut } from '@phosphor-icons/react';
+import { X, Copy, Eye, EyeSlash, SignOut, ArrowSquareOut, CheckCircle, XCircle, Clock } from '@phosphor-icons/react';
 import { useWallet } from '../../contexts';
+import { useTransactionHistory } from '../../hooks/usePositions';
 import { useState } from 'react';
 
 const slideIn = keyframes`
@@ -23,6 +24,11 @@ const AccountSidebar = ({ isOpen, onClose }: AccountSidebarProps) => {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'portfolio' | 'activity'>('portfolio');
   const [balanceVisible, setBalanceVisible] = useState(true);
+
+  const { data: transactions, isLoading: transactionsLoading } = useTransactionHistory(
+    connection?.account?.publicKey,
+    10
+  );
 
   if (!isOpen || !connection) return null;
 
@@ -47,6 +53,34 @@ const AccountSidebar = ({ isOpen, onClose }: AccountSidebarProps) => {
     const price = token.price || 0;
     return total + (balance * price);
   }, 0);
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'CONFIRMED':
+      case 'OPEN':
+        return <CheckCircle size={12} weight="fill" />;
+      case 'FAILED':
+      case 'LIQUIDATED':
+        return <XCircle size={12} weight="fill" />;
+      default:
+        return <Clock size={12} weight="fill" />;
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'CONFIRMED':
+      case 'OPEN':
+        return { bg: 'rgba(220, 253, 143, 0.1)', border: 'rgba(220, 253, 143, 0.3)', text: 'var(--clr-primary)' };
+      case 'FAILED':
+      case 'LIQUIDATED':
+        return { bg: 'rgba(255, 100, 100, 0.1)', border: 'rgba(255, 100, 100, 0.3)', text: 'var(--status-error)' };
+      case 'CLOSED':
+        return { bg: 'rgba(100, 100, 255, 0.1)', border: 'rgba(100, 100, 255, 0.3)', text: '#6464ff' };
+      default:
+        return { bg: 'rgba(255, 165, 0, 0.1)', border: 'rgba(255, 165, 0, 0.3)', text: 'var(--status-warning)' };
+    }
+  };
 
   return (
     <>
@@ -270,8 +304,104 @@ const AccountSidebar = ({ isOpen, onClose }: AccountSidebarProps) => {
               </div>
             </>
           ) : (
-            <div css={css`padding: 2rem; text-align: center; color: var(--text-secondary);`}>
-              No recent activity
+            <div css={css`padding: 1rem;`}>
+              {transactionsLoading ? (
+                <div css={css`padding: 2rem; text-align: center;`}>
+                  <div css={css`
+                    display: inline-block;
+                    width: 1.5rem;
+                    height: 1.5rem;
+                    border: 2px solid var(--border-subtle);
+                    border-top-color: var(--clr-primary);
+                    border-radius: 50%;
+                    animation: spin 0.8s linear infinite;
+                    @keyframes spin { to { transform: rotate(360deg); } }
+                  `} />
+                </div>
+              ) : !transactions || transactions.length === 0 ? (
+                <div css={css`padding: 2rem; text-align: center;`}>
+                  <Clock size={40} css={css`color: var(--text-tertiary); margin-bottom: 0.75rem; opacity: 0.5;`} />
+                  <p css={css`color: var(--text-secondary); font-size: 0.8125rem;`}>
+                    No recent activity
+                  </p>
+                </div>
+              ) : (
+                <div css={css`display: flex; flex-direction: column; gap: 0.75rem;`}>
+                  {transactions.map((tx) => {
+                    const statusColors = getStatusColor(tx.status);
+                    return (
+                      <div
+                        key={tx.id}
+                        css={css`
+                          padding: 0.875rem;
+                          background: var(--bg-surface);
+                          border: 1px solid var(--border-subtle);
+                          border-radius: 8px;
+                          transition: border-color 0.15s;
+                          &:hover { border-color: var(--border-default); }
+                        `}
+                      >
+                        <div css={css`display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;`}>
+                          <div css={css`flex: 1;`}>
+                            <div css={css`font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem;`}>
+                              {tx.type === 'POSITION_OPEN' ? 'Position Opened' : 'Protective Swap'}
+                            </div>
+                            <div css={css`font-size: 0.6875rem; color: var(--text-secondary);`}>
+                              {tx.type === 'POSITION_OPEN' ? (
+                                <>
+                                  {tx.details.collateralToken} → {tx.details.borrowToken}
+                                  <br />
+                                  {tx.details.leverage?.toFixed(1)}x • {tx.protocol}
+                                </>
+                              ) : (
+                                <>
+                                  {tx.details.fromToken} → {tx.details.toToken}
+                                  <br />
+                                  {tx.protocol}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          {tx.txSignature && (
+                            <a
+                              href={`https://solscan.io/tx/${tx.txSignature}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              css={css`
+                                color: var(--clr-primary);
+                                transition: opacity 0.15s;
+                                &:hover { opacity: 0.8; }
+                              `}
+                            >
+                              <ArrowSquareOut size={16} />
+                            </a>
+                          )}
+                        </div>
+                        <div css={css`display: flex; justify-content: space-between; align-items: center;`}>
+                          <span css={css`
+                            display: inline-flex;
+                            align-items: center;
+                            gap: 0.25rem;
+                            padding: 0.125rem 0.5rem;
+                            background: ${statusColors.bg};
+                            border: 1px solid ${statusColors.border};
+                            border-radius: 4px;
+                            font-size: 0.625rem;
+                            font-weight: 600;
+                            color: ${statusColors.text};
+                          `}>
+                            {getStatusIcon(tx.status)}
+                            {tx.status}
+                          </span>
+                          <span css={css`font-size: 0.6875rem; color: var(--text-tertiary);`}>
+                            {new Date(tx.timestamp).toLocaleDateString()} {new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
