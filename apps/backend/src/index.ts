@@ -197,13 +197,34 @@ async function main() {
     process.on('SIGTERM', () => shutdown('SIGTERM'));
 
     // Handle uncaught errors
-    process.on('uncaughtException', (error) => {
-      logger.error('Uncaught exception:', error);
+    process.on('uncaughtException', (error: Error) => {
+      const errorMessage = error?.message || String(error);
+      logger.error('Uncaught exception:', errorMessage);
+      
+      // Don't crash on WebSocket/rate limit errors - these are recoverable
+      if (errorMessage.includes('429') || 
+          errorMessage.includes('WebSocket') ||
+          errorMessage.includes('ECONNRESET') ||
+          errorMessage.includes('ETIMEDOUT')) {
+        logger.warn('Recoverable error detected, continuing operation...');
+        return;
+      }
+      
+      // For other critical errors, shutdown gracefully
       shutdown('uncaughtException');
     });
 
-    process.on('unhandledRejection', (reason, promise) => {
-      logger.error('Unhandled rejection at:', promise, 'reason:', reason);
+    process.on('unhandledRejection', (reason: any, promise) => {
+      const errorMessage = reason?.message || String(reason);
+      logger.error('Unhandled rejection:', errorMessage);
+      
+      // Don't crash on WebSocket/rate limit rejections
+      if (errorMessage.includes('429') || 
+          errorMessage.includes('WebSocket') ||
+          errorMessage.includes('ECONNRESET')) {
+        logger.warn('Recoverable rejection detected, continuing operation...');
+        return;
+      }
     });
 
   } catch (error) {

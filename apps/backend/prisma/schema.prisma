@@ -15,8 +15,10 @@ datasource db {
 
 enum Protocol {
   DRIFT
-  MARGINFI
-  SOLEND
+  KAMINO
+  SAVE
+  FRANCIUM
+  LOOPSCALE
 }
 
 enum RecommendedAction {

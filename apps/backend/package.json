@@ -11,6 +11,9 @@
     "test:watch": "jest --watch",
     "test:prediction": "ts-node tests/test-prediction.ts",
     "test:execution": "ts-node tests/test-execution.ts",
+    "test:integration": "ts-node tests/test-integration-simple.ts",
+    "test:drift": "ts-node tests/test-drift-transactions.ts",
+    "test:e2e": "ts-node tests/test-e2e-devnet.ts",
     "lint": "eslint src/**/*.ts",
     "clean": "rm -rf dist",
     "db:migrate": "prisma migrate dev",
@@ -21,6 +24,7 @@
   "dependencies": {
     "@coral-xyz/anchor": "^0.29.0",
     "@drift-labs/sdk": "^2.148.0",
+    "@kamino-finance/klend-sdk": "^7.3.9",
     "@mrgnlabs/marginfi-client-v2": "^6.2.1",
     "@prisma/client": "^5.7.0",
     "@solana/spl-token": "^0.3.9",
