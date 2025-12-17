@@ -48,17 +48,24 @@ export class CacheService {
    * Initialize Redis connection
    */
   private initializeRedis(): void {
+    // Skip Redis if not configured or in development without Redis
+    if (!config.redisUrl && process.env.NODE_ENV !== 'production') {
+      logger.info('Redis not configured, using local cache only');
+      return;
+    }
+
     try {
       const redisUrl = config.redisUrl || 'redis://localhost:6379';
       
       this.redis = new Redis(redisUrl, {
-        maxRetriesPerRequest: 3,
+        maxRetriesPerRequest: 1,
+        connectTimeout: 2000,
         retryStrategy: (times) => {
-          if (times > 3) {
+          if (times > 1) {
             logger.warn('Redis connection failed, falling back to local cache');
             return null; // Stop retrying
           }
-          return Math.min(times * 100, 3000);
+          return 500;
         },
         lazyConnect: true,
       });
@@ -69,11 +76,20 @@ export class CacheService {
 
       this.redis.on('error', (err) => {
         logger.warn('Redis error, using local cache:', err.message);
+        this.redis = null;
       });
 
-      // Try to connect
-      this.redis.connect().catch(() => {
+      // Try to connect with timeout
+      const connectPromise = this.redis.connect();
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Redis connection timeout')), 2000)
+      );
+
+      Promise.race([connectPromise, timeoutPromise]).catch(() => {
         logger.warn('Redis not available, using local cache only');
+        if (this.redis) {
+          this.redis.disconnect();
+        }
         this.redis = null;
       });
     } catch (error) {

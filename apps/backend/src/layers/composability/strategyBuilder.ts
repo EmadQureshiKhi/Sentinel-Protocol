@@ -3,7 +3,7 @@
  * Fluent API for building complex multi-step strategies
  */
 
-import { TransactionInstruction, PublicKey, Keypair } from '@solana/web3.js';
+import { TransactionInstruction, PublicKey, Keypair, Transaction } from '@solana/web3.js';
 import { logger } from '../../utils/logger';
 import { MultiTransactionCoordinator, StrategyStep, MultiTxResult, SplitResult } from './multiTxCoordinator';
 import { JITO_CONFIG } from '../../config/constants';
@@ -106,7 +106,66 @@ export class StrategyBuilder {
   }
 
   /**
-   * Add a swap step (placeholder - would integrate with Jupiter)
+   * Add a swap step using Jupiter
+   * Note: This returns a promise since we need to fetch swap instructions
+   */
+  async addSwapAsync(
+    fromToken: string,
+    toToken: string,
+    amount: number,
+    slippageBps: number,
+    userPublicKey: string,
+    description?: string
+  ): Promise<StrategyBuilder> {
+    // Import Jupiter swap engine
+    const { JupiterSwapEngine } = await import('../execution/jupiterSwap');
+    const jupiterEngine = new JupiterSwapEngine();
+
+    try {
+      // Get swap quote
+      const quote = await jupiterEngine.getSwapQuote(
+        fromToken,
+        toToken,
+        amount,
+        slippageBps
+      );
+
+      // Get swap instructions
+      const swapInstructions = await jupiterEngine.getSwapInstructions(
+        quote,
+        userPublicKey,
+        {
+          wrapAndUnwrapSol: true,
+          useSharedAccounts: true,
+          dynamicComputeUnitLimit: true,
+        }
+      );
+
+      // Create instruction from Jupiter response
+      const instruction = new TransactionInstruction({
+        programId: new PublicKey(swapInstructions.swapInstruction.programId),
+        keys: swapInstructions.swapInstruction.accounts.map(acc => ({
+          pubkey: new PublicKey(acc.pubkey),
+          isSigner: acc.isSigner,
+          isWritable: acc.isWritable,
+        })),
+        data: Buffer.from(swapInstructions.swapInstruction.data, 'base64'),
+      });
+
+      return this.addStep(instruction, {
+        estimatedCUs: 300000,
+        description: description || `Swap ${fromToken.slice(0, 8)}... to ${toToken.slice(0, 8)}...`,
+        critical: true,
+      });
+    } catch (error) {
+      logger.error('Failed to build Jupiter swap instruction', { error });
+      throw error;
+    }
+  }
+
+  /**
+   * Add a swap step (synchronous placeholder for backward compatibility)
+   * @deprecated Use addSwapAsync instead for real Jupiter swaps
    */
   addSwap(
     fromToken: string,
@@ -114,6 +173,8 @@ export class StrategyBuilder {
     amount: number,
     description?: string
   ): StrategyBuilder {
+    logger.warn('Using deprecated addSwap - use addSwapAsync for real Jupiter integration');
+    
     const instruction = new TransactionInstruction({
       programId: new PublicKey('JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4'),
       keys: [],
@@ -128,14 +189,83 @@ export class StrategyBuilder {
   }
 
   /**
-   * Add a deposit step (placeholder)
+   * Add a deposit step using real protocol SDK
+   * Note: This returns a promise since we need to build protocol-specific instructions
    */
-  addDeposit(
+  async addDepositAsync(
     protocol: string,
     token: string,
     amount: number,
+    marketIndex: number,
+    userPublicKey: string,
+    userTokenAccount: string,
     description?: string
-  ): StrategyBuilder {
+  ): Promise<StrategyBuilder> {
+    if (protocol.toUpperCase() === 'DRIFT') {
+      // Import Drift SDK
+      const DriftSDK = await import('@drift-labs/sdk');
+      const { Connection } = await import('@solana/web3.js');
+
+      try {
+        // Create connection
+        const rpcUrl = process.env.MAINNET_RPC_URL || process.env.HELIUS_RPC_URL || 'https://api.mainnet-beta.solana.com';
+        const connection = new Connection(rpcUrl, 'confirmed');
+
+        // Create dummy wallet for instruction building
+        const walletPubkey = new PublicKey(userPublicKey);
+        const dummyWallet = {
+          publicKey: walletPubkey,
+          signTransaction: async (tx: Transaction) => tx,
+          signAllTransactions: async (txs: Transaction[]) => txs,
+        };
+
+        // Initialize Drift client
+        const driftClient = new DriftSDK.DriftClient({
+          connection,
+          wallet: dummyWallet,
+          env: 'mainnet-beta',
+        });
+
+        await driftClient.subscribe();
+
+        try {
+          // Get token decimals
+          const decimalsMap: Record<string, number> = {
+            'SOL': 9, 'USDC': 6, 'USDT': 6, 'mSOL': 9,
+            'jitoSOL': 9, 'bSOL': 9, 'PYTH': 6, 'JTO': 9,
+            'WIF': 6, 'JUP': 6,
+          };
+          const decimals = decimalsMap[token.toUpperCase()] || 9;
+          const amountBN = new DriftSDK.BN(amount * Math.pow(10, decimals));
+
+          // Build deposit instruction
+          const instruction = await driftClient.getDepositInstruction(
+            amountBN,
+            marketIndex,
+            new PublicKey(userTokenAccount),
+            0, // subAccountId
+            false, // reduceOnly
+            true // userInitialized (assume account exists in strategy)
+          );
+
+          await driftClient.unsubscribe();
+
+          return this.addStep(instruction, {
+            estimatedCUs: 100000,
+            description: description || `Deposit ${amount} ${token} to Drift`,
+            critical: true,
+          });
+        } finally {
+          await driftClient.unsubscribe();
+        }
+      } catch (error) {
+        logger.error('Failed to build Drift deposit instruction', { error });
+        throw error;
+      }
+    }
+
+    // Fallback for unsupported protocols
+    logger.warn(`Protocol ${protocol} not yet supported for deposits, using placeholder`);
     const instruction = new TransactionInstruction({
       programId: new PublicKey('11111111111111111111111111111111'),
       keys: [],
@@ -150,7 +280,121 @@ export class StrategyBuilder {
   }
 
   /**
-   * Add a withdraw step (placeholder)
+   * Add a deposit step (synchronous placeholder for backward compatibility)
+   * @deprecated Use addDepositAsync instead for real protocol integration
+   */
+  addDeposit(
+    protocol: string,
+    token: string,
+    amount: number,
+    description?: string
+  ): StrategyBuilder {
+    logger.warn('Using deprecated addDeposit - use addDepositAsync for real protocol integration');
+    
+    const instruction = new TransactionInstruction({
+      programId: new PublicKey('11111111111111111111111111111111'),
+      keys: [],
+      data: Buffer.from([]),
+    });
+
+    return this.addStep(instruction, {
+      estimatedCUs: 100000,
+      description: description || `Deposit ${amount} ${token} to ${protocol}`,
+      critical: true,
+    });
+  }
+
+  /**
+   * Add a withdraw step using real protocol SDK
+   * Note: This returns a promise since we need to build protocol-specific instructions
+   */
+  async addWithdrawAsync(
+    protocol: string,
+    token: string,
+    amount: number,
+    marketIndex: number,
+    userPublicKey: string,
+    description?: string
+  ): Promise<StrategyBuilder> {
+    if (protocol.toUpperCase() === 'DRIFT') {
+      // Import Drift SDK
+      const DriftSDK = await import('@drift-labs/sdk');
+      const { Connection } = await import('@solana/web3.js');
+
+      try {
+        // Create connection
+        const rpcUrl = process.env.MAINNET_RPC_URL || process.env.HELIUS_RPC_URL || 'https://api.mainnet-beta.solana.com';
+        const connection = new Connection(rpcUrl, 'confirmed');
+
+        // Create dummy wallet for instruction building
+        const walletPubkey = new PublicKey(userPublicKey);
+        const dummyWallet = {
+          publicKey: walletPubkey,
+          signTransaction: async (tx: Transaction) => tx,
+          signAllTransactions: async (txs: Transaction[]) => txs,
+        };
+
+        // Initialize Drift client
+        const driftClient = new DriftSDK.DriftClient({
+          connection,
+          wallet: dummyWallet,
+          env: 'mainnet-beta',
+        });
+
+        await driftClient.subscribe();
+
+        try {
+          // Get token decimals
+          const decimalsMap: Record<string, number> = {
+            'SOL': 9, 'USDC': 6, 'USDT': 6, 'mSOL': 9,
+            'jitoSOL': 9, 'bSOL': 9, 'PYTH': 6, 'JTO': 9,
+            'WIF': 6, 'JUP': 6,
+          };
+          const decimals = decimalsMap[token.toUpperCase()] || 9;
+          const amountBN = new DriftSDK.BN(amount * Math.pow(10, decimals));
+
+          // Build withdraw instruction
+          const instruction = await driftClient.getWithdrawIx(
+            amountBN,
+            marketIndex,
+            walletPubkey,
+            false // reduceOnly = false (allows withdrawing)
+          );
+
+          await driftClient.unsubscribe();
+
+          return this.addStep(instruction, {
+            estimatedCUs: 100000,
+            description: description || `Withdraw ${amount} ${token} from Drift`,
+            critical: true,
+          });
+        } finally {
+          await driftClient.unsubscribe();
+        }
+      } catch (error) {
+        logger.error('Failed to build Drift withdraw instruction', { error });
+        throw error;
+      }
+    }
+
+    // Fallback for unsupported protocols
+    logger.warn(`Protocol ${protocol} not yet supported for withdraws, using placeholder`);
+    const instruction = new TransactionInstruction({
+      programId: new PublicKey('11111111111111111111111111111111'),
+      keys: [],
+      data: Buffer.from([]),
+    });
+
+    return this.addStep(instruction, {
+      estimatedCUs: 100000,
+      description: description || `Withdraw ${amount} ${token} from ${protocol}`,
+      critical: true,
+    });
+  }
+
+  /**
+   * Add a withdraw step (synchronous placeholder for backward compatibility)
+   * @deprecated Use addWithdrawAsync instead for real protocol integration
    */
   addWithdraw(
     protocol: string,
@@ -158,6 +402,8 @@ export class StrategyBuilder {
     amount: number,
     description?: string
   ): StrategyBuilder {
+    logger.warn('Using deprecated addWithdraw - use addWithdrawAsync for real protocol integration');
+    
     const instruction = new TransactionInstruction({
       programId: new PublicKey('11111111111111111111111111111111'),
       keys: [],

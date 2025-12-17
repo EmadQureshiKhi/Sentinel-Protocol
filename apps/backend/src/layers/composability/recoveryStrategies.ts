@@ -59,26 +59,61 @@ export class RecoveryStrategies {
   /**
    * Build health check instruction
    * Reads current health factor from protocol
+   * 
+   * Note: For Drift, health is calculated off-chain from account data
+   * This creates a no-op instruction as a marker in the strategy
    */
-  buildHealthCheckStep(
+  async buildHealthCheckStep(
     walletAddress: string,
     protocol: Protocol
-  ): StrategyStep {
-    // In production, this would be a CPI to the protocol's health check
-    // For now, we create a placeholder instruction
+  ): Promise<StrategyStep> {
+    if (protocol === 'DRIFT') {
+      // For Drift, we can use the Drift SDK to get user account data
+      // Health factor is calculated from the account state
+      // This is a marker instruction - actual health check happens off-chain
+      const DriftSDK = await import('@drift-labs/sdk');
+      const { getUserAccountPublicKeySync } = DriftSDK;
+      
+      const userPubkey = new PublicKey(walletAddress);
+      
+      // Get Drift program ID
+      const DRIFT_PROGRAM_ID = new PublicKey('dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH');
+      
+      // Derive user account PDA
+      const userAccountPDA = getUserAccountPublicKeySync(DRIFT_PROGRAM_ID, userPubkey, 0);
+      
+      // Create a read-only instruction to the user account
+      const instruction = new TransactionInstruction({
+        programId: DRIFT_PROGRAM_ID,
+        keys: [
+          { pubkey: userAccountPDA, isSigner: false, isWritable: false },
+          { pubkey: userPubkey, isSigner: false, isWritable: false },
+        ],
+        data: Buffer.from([]), // No-op data
+      });
+
+      return {
+        instruction,
+        estimatedCUs: 50000,
+        description: `Check Drift health factor`,
+        critical: false, // Health check is informational
+      };
+    }
+
+    // Fallback for other protocols
     const instruction = new TransactionInstruction({
-      programId: new PublicKey('11111111111111111111111111111111'), // System program as placeholder
+      programId: new PublicKey('11111111111111111111111111111111'),
       keys: [
         { pubkey: new PublicKey(walletAddress), isSigner: false, isWritable: false },
       ],
-      data: Buffer.from([]), // Would contain protocol-specific data
+      data: Buffer.from([]),
     });
 
     return {
       instruction,
       estimatedCUs: 50000,
       description: `Check health factor on ${protocol}`,
-      critical: true,
+      critical: false,
     };
   }
 
@@ -133,30 +168,186 @@ export class RecoveryStrategies {
   }
 
   /**
-   * Build deposit instruction
+   * Build deposit instruction using real protocol SDK
    * Deposits tokens into protocol to improve health
    */
-  buildDepositStep(
+  async buildDepositStep(
     protocol: Protocol,
     token: string,
     amount: number,
-    userPublicKey: string
-  ): StrategyStep {
-    // In production, this would be protocol-specific deposit instruction
-    // Drift: depositCollateral, Marginfi: deposit, Solend: depositReserveLiquidity
-    
+    marketIndex: number,
+    userPublicKey: string,
+    userTokenAccount: string
+  ): Promise<StrategyStep> {
+    if (protocol === 'DRIFT') {
+      // Import Drift SDK
+      const DriftSDK = await import('@drift-labs/sdk');
+      const { Connection } = await import('@solana/web3.js');
+
+      try {
+        // Create connection
+        const rpcUrl = process.env.MAINNET_RPC_URL || process.env.HELIUS_RPC_URL || 'https://api.mainnet-beta.solana.com';
+        const connection = new Connection(rpcUrl, 'confirmed');
+
+        // Create dummy wallet for instruction building
+        const walletPubkey = new PublicKey(userPublicKey);
+        const dummyWallet = {
+          publicKey: walletPubkey,
+          signTransaction: async (tx: any) => tx,
+          signAllTransactions: async (txs: any[]) => txs,
+        };
+
+        // Initialize Drift client
+        const driftClient = new DriftSDK.DriftClient({
+          connection,
+          wallet: dummyWallet,
+          env: 'mainnet-beta',
+        });
+
+        await driftClient.subscribe();
+
+        try {
+          // Get token decimals
+          const decimalsMap: Record<string, number> = {
+            'SOL': 9, 'USDC': 6, 'USDT': 6, 'mSOL': 9,
+            'jitoSOL': 9, 'bSOL': 9, 'PYTH': 6, 'JTO': 9,
+            'WIF': 6, 'JUP': 6,
+          };
+          const decimals = decimalsMap[token.toUpperCase()] || 9;
+          const amountBN = new DriftSDK.BN(amount * Math.pow(10, decimals));
+
+          // Build deposit instruction
+          const instruction = await driftClient.getDepositInstruction(
+            amountBN,
+            marketIndex,
+            new PublicKey(userTokenAccount),
+            0, // subAccountId
+            false, // reduceOnly
+            true // userInitialized
+          );
+
+          await driftClient.unsubscribe();
+
+          return {
+            instruction,
+            estimatedCUs: 100000,
+            description: `Deposit ${amount} ${token} to Drift`,
+            critical: true,
+          };
+        } finally {
+          await driftClient.unsubscribe();
+        }
+      } catch (error) {
+        logger.error('Failed to build Drift deposit instruction', { error });
+        throw error;
+      }
+    }
+
+    // Fallback for unsupported protocols
+    logger.warn(`Protocol ${protocol} not yet supported for deposits, using placeholder`);
     const instruction = new TransactionInstruction({
       programId: new PublicKey('11111111111111111111111111111111'),
       keys: [
         { pubkey: new PublicKey(userPublicKey), isSigner: true, isWritable: true },
       ],
-      data: Buffer.from([]), // Would contain deposit amount and token info
+      data: Buffer.from([]),
     });
 
     return {
       instruction,
       estimatedCUs: 100000,
       description: `Deposit ${amount} to ${protocol}`,
+      critical: true,
+    };
+  }
+
+  /**
+   * Build emergency withdraw instruction
+   * Withdraws collateral to reduce position risk
+   */
+  async buildEmergencyWithdrawStep(
+    protocol: Protocol,
+    token: string,
+    amount: number,
+    marketIndex: number,
+    userPublicKey: string
+  ): Promise<StrategyStep> {
+    if (protocol === 'DRIFT') {
+      // Import Drift SDK
+      const DriftSDK = await import('@drift-labs/sdk');
+      const { Connection } = await import('@solana/web3.js');
+
+      try {
+        // Create connection
+        const rpcUrl = process.env.MAINNET_RPC_URL || process.env.HELIUS_RPC_URL || 'https://api.mainnet-beta.solana.com';
+        const connection = new Connection(rpcUrl, 'confirmed');
+
+        // Create dummy wallet for instruction building
+        const walletPubkey = new PublicKey(userPublicKey);
+        const dummyWallet = {
+          publicKey: walletPubkey,
+          signTransaction: async (tx: any) => tx,
+          signAllTransactions: async (txs: any[]) => txs,
+        };
+
+        // Initialize Drift client
+        const driftClient = new DriftSDK.DriftClient({
+          connection,
+          wallet: dummyWallet,
+          env: 'mainnet-beta',
+        });
+
+        await driftClient.subscribe();
+
+        try {
+          // Get token decimals
+          const decimalsMap: Record<string, number> = {
+            'SOL': 9, 'USDC': 6, 'USDT': 6, 'mSOL': 9,
+            'jitoSOL': 9, 'bSOL': 9, 'PYTH': 6, 'JTO': 9,
+            'WIF': 6, 'JUP': 6,
+          };
+          const decimals = decimalsMap[token.toUpperCase()] || 9;
+          const amountBN = new DriftSDK.BN(amount * Math.pow(10, decimals));
+
+          // Build withdraw instruction
+          const instruction = await driftClient.getWithdrawIx(
+            amountBN,
+            marketIndex,
+            walletPubkey,
+            false // reduceOnly = false
+          );
+
+          await driftClient.unsubscribe();
+
+          return {
+            instruction,
+            estimatedCUs: 100000,
+            description: `Emergency withdraw ${amount} ${token} from Drift`,
+            critical: true,
+          };
+        } finally {
+          await driftClient.unsubscribe();
+        }
+      } catch (error) {
+        logger.error('Failed to build Drift withdraw instruction', { error });
+        throw error;
+      }
+    }
+
+    // Fallback for unsupported protocols
+    logger.warn(`Protocol ${protocol} not yet supported for withdraws, using placeholder`);
+    const instruction = new TransactionInstruction({
+      programId: new PublicKey('11111111111111111111111111111111'),
+      keys: [
+        { pubkey: new PublicKey(userPublicKey), isSigner: true, isWritable: true },
+      ],
+      data: Buffer.from([]),
+    });
+
+    return {
+      instruction,
+      estimatedCUs: 100000,
+      description: `Emergency withdraw ${amount} from ${protocol}`,
       critical: true,
     };
   }
@@ -194,7 +385,8 @@ export class RecoveryStrategies {
     const steps: StrategyStep[] = [];
 
     // Step 1: Check current health
-    steps.push(this.buildHealthCheckStep(config.walletAddress, config.protocol));
+    const healthCheckStep = await this.buildHealthCheckStep(config.walletAddress, config.protocol);
+    steps.push(healthCheckStep);
 
     // Step 2: Calculate swap amount and build swap step
     // In production, you'd calculate based on actual position data
@@ -210,12 +402,23 @@ export class RecoveryStrategies {
     steps.push(swapStep);
 
     // Step 3: Deposit received tokens
-    steps.push(this.buildDepositStep(
+    // Get market index for debt token (USDC = 0, SOL = 1, etc.)
+    const marketIndexMap: Record<string, number> = {
+      'USDC': 0, 'SOL': 1, 'mSOL': 2, 'USDT': 5,
+      'jitoSOL': 6, 'PYTH': 7, 'bSOL': 8, 'JTO': 9,
+      'WIF': 10, 'JUP': 11,
+    };
+    const debtMarketIndex = marketIndexMap[config.debtToken.toUpperCase()] || 0;
+    
+    const depositStep = await this.buildDepositStep(
       config.protocol,
       config.debtToken,
       swapAmount, // Would be actual received amount
-      config.walletAddress
-    ));
+      debtMarketIndex,
+      config.walletAddress,
+      config.walletAddress // Simplified - would be actual token account
+    );
+    steps.push(depositStep);
 
     // Step 4: Verify health improved
     steps.push(this.buildVerifyHealthStep(
@@ -224,7 +427,12 @@ export class RecoveryStrategies {
       config.targetHealthFactor
     ));
 
-    logger.info(`Built recovery strategy with ${steps.length} steps`);
+    logger.info(`Built recovery strategy with ${steps.length} steps`, {
+      protocol: config.protocol,
+      swapAmount,
+      targetHealth: config.targetHealthFactor,
+    });
+    
     return steps;
   }
 
@@ -275,6 +483,77 @@ export class RecoveryStrategies {
         durationMs: Date.now() - startTime,
       };
     }
+  }
+
+  /**
+   * Build collateral swap recovery strategy
+   * Swaps volatile collateral to stable without depositing
+   * Useful when you want to reduce exposure but maintain position
+   */
+  async buildCollateralSwapStrategy(
+    config: RecoveryConfig
+  ): Promise<StrategyStep[]> {
+    const steps: StrategyStep[] = [];
+
+    // Step 1: Check current health
+    const healthCheckStep = await this.buildHealthCheckStep(config.walletAddress, config.protocol);
+    steps.push(healthCheckStep);
+
+    // Step 2: Emergency withdraw volatile collateral
+    const marketIndexMap: Record<string, number> = {
+      'USDC': 0, 'SOL': 1, 'mSOL': 2, 'USDT': 5,
+      'jitoSOL': 6, 'PYTH': 7, 'bSOL': 8, 'JTO': 9,
+      'WIF': 10, 'JUP': 11,
+    };
+    const collateralMarketIndex = marketIndexMap[config.collateralToken.toUpperCase()] || 1;
+    const withdrawAmount = 1e9 * (config.swapPercentage / 100);
+    
+    const withdrawStep = await this.buildEmergencyWithdrawStep(
+      config.protocol,
+      config.collateralToken,
+      withdrawAmount,
+      collateralMarketIndex,
+      config.walletAddress
+    );
+    steps.push(withdrawStep);
+
+    // Step 3: Swap to stable
+    const swapStep = await this.buildSwapCollateralStep(
+      config.collateralToken,
+      config.debtToken,
+      withdrawAmount,
+      config.maxSlippageBps,
+      config.walletAddress
+    );
+    steps.push(swapStep);
+
+    // Step 4: Deposit stable collateral back
+    const debtMarketIndex = marketIndexMap[config.debtToken.toUpperCase()] || 0;
+    const depositStep = await this.buildDepositStep(
+      config.protocol,
+      config.debtToken,
+      withdrawAmount, // Would be actual received amount
+      debtMarketIndex,
+      config.walletAddress,
+      config.walletAddress
+    );
+    steps.push(depositStep);
+
+    // Step 5: Verify health improved
+    steps.push(this.buildVerifyHealthStep(
+      config.walletAddress,
+      config.protocol,
+      config.targetHealthFactor
+    ));
+
+    logger.info(`Built collateral swap strategy with ${steps.length} steps`, {
+      protocol: config.protocol,
+      from: config.collateralToken,
+      to: config.debtToken,
+      amount: withdrawAmount,
+    });
+
+    return steps;
   }
 
   /**
