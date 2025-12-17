@@ -3,7 +3,7 @@
  * Shared types for all protocol integrations
  */
 
-export type ProtocolName = 'DRIFT' | 'MARGINFI' | 'SOLEND';
+export type ProtocolName = 'DRIFT' | 'KAMINO' | 'SAVE' | 'FRANCIUM' | 'LOOPSCALE';
 export type NetworkType = 'mainnet-beta' | 'devnet';
 
 export interface TokenRate {

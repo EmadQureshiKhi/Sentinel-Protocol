@@ -4,8 +4,7 @@
  */
 
 import { DriftService, createDriftService } from './drift';
-import { MarginFiService, createMarginFiService } from './marginfi';
-import { SolendService, createSolendService } from './solend';
+import { DefiLlamaProtocolsService, createDefiLlamaProtocolsService } from './defiLlamaProtocols';
 import {
   ProtocolRates,
   AggregatedRates,
@@ -24,15 +23,13 @@ const CACHE_TTL = 5; // 5 seconds
 
 export class RateAggregator {
   private driftService: DriftService;
-  private marginFiService: MarginFiService;
-  private solendService: SolendService;
+  private defiLlamaService: DefiLlamaProtocolsService;
   private network: NetworkType;
 
   constructor(network: NetworkType = 'mainnet-beta') {
     this.network = network;
     this.driftService = createDriftService(network);
-    this.marginFiService = createMarginFiService(network);
-    this.solendService = createSolendService(network);
+    this.defiLlamaService = createDefiLlamaProtocolsService(network);
   }
 
   /**
@@ -51,25 +48,21 @@ export class RateAggregator {
       logger.info('Fetching rates from all protocols', { network: this.network });
 
       // Fetch from all protocols in parallel
-      const [driftRates, marginFiRates, solendRates] = await Promise.all([
+      // Using Drift Data API and DeFiLlama for real data
+      const [driftRates, defiLlamaRates] = await Promise.all([
         this.driftService.getRates().catch(err => {
           logger.error('Failed to fetch Drift rates', { error: err });
           return null;
         }),
-        this.marginFiService.getRates().catch(err => {
-          logger.error('Failed to fetch MarginFi rates', { error: err });
-          return null;
-        }),
-        this.solendService.getRates().catch(err => {
-          logger.error('Failed to fetch Solend rates', { error: err });
-          return null;
+        this.defiLlamaService.getAllProtocolRates().catch(err => {
+          logger.error('Failed to fetch DeFiLlama rates', { error: err });
+          return [];
         }),
       ]);
 
       const protocols: ProtocolRates[] = [];
       if (driftRates) protocols.push(driftRates);
-      if (marginFiRates) protocols.push(marginFiRates);
-      if (solendRates) protocols.push(solendRates);
+      protocols.push(...defiLlamaRates);
 
       // Calculate best rates
       const bestSupplyRates = this.findBestSupplyRates(protocols);
@@ -108,11 +101,17 @@ export class RateAggregator {
       case 'DRIFT':
         rates = await this.driftService.getRates();
         break;
-      case 'MARGINFI':
-        rates = await this.marginFiService.getRates();
+      case 'KAMINO':
+        rates = await this.defiLlamaService.getProtocolRates('KAMINO', 'kamino-lend');
         break;
-      case 'SOLEND':
-        rates = await this.solendService.getRates();
+      case 'SAVE':
+        rates = await this.defiLlamaService.getProtocolRates('SAVE', 'save');
+        break;
+      case 'FRANCIUM':
+        rates = await this.defiLlamaService.getProtocolRates('FRANCIUM', 'francium');
+        break;
+      case 'LOOPSCALE':
+        rates = await this.defiLlamaService.getProtocolRates('LOOPSCALE', 'loopscale');
         break;
       default:
         throw new Error(`Unknown protocol: ${protocol}`);
@@ -170,17 +169,15 @@ export class RateAggregator {
     const allRates = await this.getAllRates();
     const quotes: PositionQuote[] = [];
 
-    // Mock price data (in production, fetch from oracle)
-    const prices: Record<string, number> = {
-      SOL: 140,
-      USDC: 1,
-      USDT: 1,
-      mSOL: 155,
-      jitoSOL: 158,
-    };
-
-    const collateralPrice = prices[params.collateralToken] || 1;
-    const borrowPrice = prices[params.borrowToken] || 1;
+    // Fetch real prices from Jupiter API
+    const { priceService } = await import('../prices');
+    const prices = await priceService.getPrices([params.collateralToken, params.borrowToken]);
+    
+    const collateralPriceData = prices.get(params.collateralToken.toUpperCase());
+    const borrowPriceData = prices.get(params.borrowToken.toUpperCase());
+    
+    const collateralPrice = collateralPriceData?.price || 1;
+    const borrowPrice = borrowPriceData?.price || 1;
     const collateralValueUsd = params.collateralAmount * collateralPrice;
     const borrowValueUsd = collateralValueUsd * (params.leverage - 1);
     const borrowAmount = borrowValueUsd / borrowPrice;

@@ -5,12 +5,10 @@
 
 export * from './types';
 export * from './drift';
-export * from './marginfi';
-export * from './solend';
+export * from './kamino';
 export * from './rateAggregator';
 
 // Re-export main services
 export { DriftService, createDriftService } from './drift';
-export { MarginFiService, createMarginFiService } from './marginfi';
-export { SolendService, createSolendService } from './solend';
+export { KaminoService, createKaminoService } from './kamino';
 export { RateAggregator, createRateAggregator, getRateAggregator } from './rateAggregator';
