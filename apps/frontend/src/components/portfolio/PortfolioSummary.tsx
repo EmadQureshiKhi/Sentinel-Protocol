@@ -36,9 +36,11 @@ const PortfolioSummary = ({ portfolio, isLoading }: PortfolioSummaryProps) => {
     );
   }
 
+  // Calculate health percentage: (1 - 1/healthFactor) * 100
+  const healthPercent = portfolio ? Math.round((1 - 1 / portfolio.aggregateHealthFactor) * 100) : 0;
   const healthColor = !portfolio ? 'var(--text-tertiary)' :
-    portfolio.aggregateHealthFactor >= 2 ? 'var(--status-success)' :
-    portfolio.aggregateHealthFactor >= 1.5 ? 'var(--status-warning)' :
+    healthPercent >= 50 ? 'var(--status-success)' :
+    healthPercent >= 25 ? 'var(--status-warning)' :
     'var(--status-error)';
 
   const pnlColor = !portfolio ? 'var(--text-tertiary)' :
@@ -61,10 +63,10 @@ const PortfolioSummary = ({ portfolio, isLoading }: PortfolioSummaryProps) => {
     },
     {
       icon: Heart,
-      label: 'Health Factor',
-      value: portfolio ? portfolio.aggregateHealthFactor.toFixed(2) : '—',
+      label: 'Health',
+      value: portfolio ? `${healthPercent}%` : '—',
       color: healthColor,
-      subtext: portfolio?.aggregateHealthFactor < 1.5 ? 'At risk' : 'Healthy',
+      subtext: healthPercent < 25 ? 'At risk' : 'Healthy',
     },
     {
       icon: portfolio?.totalUnrealizedPnl >= 0 ? TrendUp : TrendDown,

@@ -9,7 +9,7 @@ import ProtocolBadge from '../components/rates/ProtocolBadge';
 type RateType = 'supply' | 'borrow';
 
 const Rates = () => {
-  const { data, isLoading, error, refetch, dataUpdatedAt } = useAllRates();
+  const { data, isLoading, error, refetch, dataUpdatedAt, isFetching } = useAllRates();
   const [rateType, setRateType] = useState<RateType>('supply');
 
   const getTimeSinceUpdate = () => {
@@ -20,7 +20,8 @@ const Rates = () => {
     return `${Math.floor(seconds / 60)}m ago`;
   };
 
-  if (isLoading) {
+  // Only show loading state if there's no cached data
+  if (isLoading && !data) {
     return (
       <div css={css`
         display: flex;
@@ -116,7 +117,7 @@ const Rates = () => {
             Protocol Rates
           </h1>
           <p css={css`font-size: 0.875rem; color: var(--text-secondary);`}>
-            Compare lending rates across Drift, MarginFi, and Solend
+            Compare lending rates across Drift, Kamino, Save, and Loopscale
           </p>
         </div>
 
@@ -136,6 +137,7 @@ const Rates = () => {
           {/* Refresh button */}
           <button
             onClick={() => refetch()}
+            disabled={isFetching}
             css={css`
               display: flex;
               align-items: center;
@@ -152,10 +154,24 @@ const Rates = () => {
                 border-color: var(--clr-primary);
                 color: var(--clr-primary);
               }
+              &:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+              }
             `}
           >
-            <ArrowsClockwise size={14} />
-            Refresh
+            <ArrowsClockwise 
+              size={14} 
+              css={css`
+                ${isFetching && `
+                  animation: spin 1s linear infinite;
+                  @keyframes spin {
+                    to { transform: rotate(360deg); }
+                  }
+                `}
+              `}
+            />
+            {isFetching ? 'Updating...' : 'Refresh'}
           </button>
         </div>
       </div>

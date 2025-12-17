@@ -5,7 +5,7 @@ import ProtocolBadge from './ProtocolBadge';
 
 interface RateCardProps {
   token: string;
-  protocol: 'DRIFT' | 'MARGINFI' | 'SOLEND';
+  protocol: 'DRIFT' | 'KAMINO' | 'SAVE' | 'LOOPSCALE';
   supplyApy: number;
   borrowApy: number;
   utilization: number;

@@ -2,8 +2,28 @@
 import { css } from '@emotion/react';
 import { useState } from 'react';
 import { Rocket, CircleNotch, CheckCircle, Warning } from '@phosphor-icons/react';
-import { useOpenPosition, ProtocolQuote, TOKEN_MINTS } from '../../hooks/usePositions';
+import { useOpenPosition, ProtocolQuote, TOKEN_MINTS, positionKeys } from '../../hooks/usePositions';
 import { useToast } from '../../contexts/ToastContext';
+import { useWallet as useSolanaWallet, useConnection } from '@solana/wallet-adapter-react';
+import { Transaction } from '@solana/web3.js';
+import { api } from '../../services/api';
+import { useQueryClient } from '@tanstack/react-query';
+
+// Helper to create toast-like interface from context
+const useToastAdapter = () => {
+  const { showToast, showSuccess, showError } = useToast();
+  return {
+    addToast: ({ type, title, message }: { type: 'success' | 'error' | 'warning' | 'info'; title: string; message?: string }) => {
+      if (type === 'success') {
+        showSuccess(title, message);
+      } else if (type === 'error') {
+        showError(title, message);
+      } else {
+        showToast({ type, title, message });
+      }
+    }
+  };
+};
 
 interface OpenPositionButtonProps {
   quote: ProtocolQuote | null;
@@ -31,15 +51,21 @@ const OpenPositionButton = ({
   disabled,
 }: OpenPositionButtonProps) => {
   const { mutateAsync: openPosition, isPending } = useOpenPosition();
-  const { addToast } = useToast();
+  const { addToast } = useToastAdapter();
+  const { signTransaction } = useSolanaWallet();
+  const { connection: solanaConnection } = useConnection();
+  const queryClient = useQueryClient();
   const [showConfirm, setShowConfirm] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const canOpen = quote && walletAddress && selectedProtocol && collateralAmount > 0 && !disabled;
+  const canOpen = quote && walletAddress && selectedProtocol && collateralAmount > 0 && !disabled && signTransaction;
 
   const handleOpenPosition = async () => {
-    if (!canOpen || !quote) return;
+    if (!canOpen || !quote || !signTransaction) return;
 
+    setIsSubmitting(true);
     try {
+      // Step 1: Get the unsigned transaction from backend
       const result = await openPosition({
         walletAddress,
         protocol: selectedProtocol,
@@ -55,31 +81,126 @@ const OpenPositionButton = ({
         enableAlerts,
       });
 
-      if (result.success) {
+      if (!result.success) {
         addToast({
-          type: 'success',
-          title: 'Position Created',
-          message: `Successfully opened ${selectedProtocol} position`,
+          type: 'error',
+          title: 'Failed to Build Transaction',
+          message: result.error || 'Unknown error occurred',
         });
-        setShowConfirm(false);
-        if (onSuccess && result.positionId) {
-          onSuccess(result.positionId);
+        return;
+      }
+
+      if (!result.transaction) {
+        addToast({
+          type: 'error',
+          title: 'No Transaction',
+          message: 'Backend did not return a transaction to sign',
+        });
+        return;
+      }
+
+      // Step 2: Decode and sign the transaction
+      addToast({
+        type: 'info',
+        title: 'Signing Transaction',
+        message: 'Please approve the transaction in your wallet',
+      });
+
+      const txBuffer = Buffer.from(result.transaction, 'base64');
+      const transaction = Transaction.from(txBuffer);
+
+      // Sign with wallet adapter's signTransaction
+      const signedTx = await signTransaction(transaction);
+
+      // Step 3: Send the signed transaction using the connection from wallet adapter
+      const signature = await solanaConnection.sendRawTransaction(signedTx.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+      });
+
+      addToast({
+        type: 'info',
+        title: 'Transaction Submitted',
+        message: `Waiting for confirmation... ${signature.slice(0, 8)}...`,
+      });
+
+      // Step 4: Wait for confirmation
+      const confirmation = await solanaConnection.confirmTransaction(signature, 'confirmed');
+
+      if (confirmation.value.err) {
+        addToast({
+          type: 'error',
+          title: 'Transaction Failed',
+          message: 'Transaction was not confirmed',
+        });
+        return;
+      }
+
+      // Step 5: Create position record in database after tx confirmation
+      let positionId: string | undefined;
+      if (result.positionData) {
+        try {
+          const confirmResult = await api.confirmPosition({
+            ...result.positionData,
+            txSignature: signature,
+          });
+          positionId = confirmResult.data?.id;
+          
+          // Invalidate queries to refresh UI
+          if (walletAddress) {
+            queryClient.invalidateQueries({ queryKey: positionKeys.transactions(walletAddress) });
+            queryClient.invalidateQueries({ queryKey: positionKeys.list(walletAddress, 'mainnet-beta') });
+          }
+          
+          addToast({
+            type: 'success',
+            title: 'Position Opened!',
+            message: `Transaction confirmed: ${signature.slice(0, 8)}...`,
+          });
+        } catch (confirmError) {
+          console.error('Failed to save position record:', confirmError);
+          // Still show success since the on-chain tx succeeded
+          addToast({
+            type: 'success',
+            title: 'Position Opened!',
+            message: `Transaction confirmed but position tracking failed. Signature: ${signature.slice(0, 8)}...`,
+          });
         }
       } else {
         addToast({
-          type: 'error',
-          title: 'Failed to Open Position',
-          message: result.error || 'Unknown error occurred',
+          type: 'success',
+          title: 'Transaction Confirmed!',
+          message: `Signature: ${signature.slice(0, 8)}...`,
         });
       }
-    } catch (error) {
-      addToast({
-        type: 'error',
-        title: 'Error',
-        message: error instanceof Error ? error.message : 'Failed to open position',
-      });
+
+      setShowConfirm(false);
+      if (onSuccess && positionId) {
+        onSuccess(positionId);
+      }
+    } catch (error: any) {
+      console.error('Error opening position:', error);
+      
+      // Handle user rejection
+      if (error.message?.includes('User rejected') || error.message?.includes('rejected')) {
+        addToast({
+          type: 'warning',
+          title: 'Transaction Cancelled',
+          message: 'You cancelled the transaction',
+        });
+      } else {
+        addToast({
+          type: 'error',
+          title: 'Error',
+          message: error instanceof Error ? error.message : 'Failed to open position',
+        });
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
+  
+  const isLoading = isPending || isSubmitting;
 
   if (!walletAddress) {
     return (
@@ -106,7 +227,7 @@ const OpenPositionButton = ({
     <>
       <button
         onClick={() => setShowConfirm(true)}
-        disabled={!canOpen || isPending}
+        disabled={!canOpen || isLoading}
         css={css`
           width: 100%;
           display: flex;
@@ -128,7 +249,7 @@ const OpenPositionButton = ({
           }
         `}
       >
-        {isPending ? (
+        {isLoading ? (
           <>
             <CircleNotch size={18} css={css`animation: spin 1s linear infinite; @keyframes spin { to { transform: rotate(360deg); } }`} />
             Opening Position...
@@ -240,7 +361,7 @@ const OpenPositionButton = ({
                 </button>
                 <button
                   onClick={handleOpenPosition}
-                  disabled={isPending}
+                  disabled={isLoading}
                   css={css`
                     flex: 1;
                     display: flex;
@@ -258,7 +379,7 @@ const OpenPositionButton = ({
                     &:disabled { opacity: 0.5; cursor: not-allowed; }
                   `}
                 >
-                  {isPending ? (
+                  {isLoading ? (
                     <CircleNotch size={16} css={css`animation: spin 1s linear infinite;`} />
                   ) : (
                     <CheckCircle size={16} weight="fill" />

@@ -2,15 +2,16 @@
 import { css } from '@emotion/react';
 
 interface ProtocolBadgeProps {
-  protocol: 'DRIFT' | 'MARGINFI' | 'SOLEND';
+  protocol: 'DRIFT' | 'KAMINO' | 'SAVE' | 'LOOPSCALE';
   size?: 'sm' | 'md' | 'lg';
   showName?: boolean;
 }
 
 const protocolColors: Record<string, { bg: string; text: string; border: string }> = {
   DRIFT: { bg: 'rgba(139, 92, 246, 0.15)', text: '#a78bfa', border: 'rgba(139, 92, 246, 0.3)' },
-  MARGINFI: { bg: 'rgba(59, 130, 246, 0.15)', text: '#60a5fa', border: 'rgba(59, 130, 246, 0.3)' },
-  SOLEND: { bg: 'rgba(236, 72, 153, 0.15)', text: '#f472b6', border: 'rgba(236, 72, 153, 0.3)' },
+  KAMINO: { bg: 'rgba(59, 130, 246, 0.15)', text: '#60a5fa', border: 'rgba(59, 130, 246, 0.3)' },
+  SAVE: { bg: 'rgba(236, 72, 153, 0.15)', text: '#f472b6', border: 'rgba(236, 72, 153, 0.3)' },
+  LOOPSCALE: { bg: 'rgba(34, 197, 94, 0.15)', text: '#4ade80', border: 'rgba(34, 197, 94, 0.3)' },
 };
 
 const ProtocolBadge = ({ protocol, size = 'md', showName = true }: ProtocolBadgeProps) => {

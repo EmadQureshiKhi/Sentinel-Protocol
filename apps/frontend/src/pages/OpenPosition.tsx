@@ -61,7 +61,7 @@ const OpenPosition = () => {
     }
   }, [quoteData]);
 
-  const handleSuccess = (positionId: string) => {
+  const handleSuccess = () => {
     navigate('/portfolio');
   };
 
@@ -76,7 +76,7 @@ const OpenPosition = () => {
     `}>
       {/* Header */}
       <div>
-        <h1 css={css`font-size: 1.5rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem;`}>
+        <h1 css={css`font-size: 1.5rem; font-weight: 600; color: var(--clr-primary); margin-bottom: 0.25rem;`}>
           Open Leveraged Position
         </h1>
         <p css={css`font-size: 0.875rem; color: var(--text-secondary);`}>
@@ -95,23 +95,96 @@ const OpenPosition = () => {
       `}>
         {/* Left Column - Form */}
         <div css={css`display: flex; flex-direction: column; gap: 1.5rem;`}>
-          {/* Collateral Section */}
+          {/* Position Configuration - Combined Container */}
           <div css={css`
             background: var(--bg-surface);
-            border: 1px solid var(--border-subtle);
+            border: 1px solid var(--border-default);
             border-radius: 12px;
-            padding: 1.25rem;
+            overflow: hidden;
           `}>
-            <h3 css={css`font-size: 0.875rem; font-weight: 600; color: var(--text-primary); margin-bottom: 1rem;`}>
-              Collateral
-            </h3>
+            {/* Collateral Section */}
+            <div css={css`padding: 1.25rem; border-bottom: 1px solid var(--border-default);`}>
+              <h3 css={css`font-size: 0.875rem; font-weight: 600; color: var(--clr-primary); margin-bottom: 1rem;`}>
+                Collateral
+              </h3>
 
-            <div css={css`display: flex; gap: 0.75rem;`}>
-              {/* Token Selector */}
+              <div css={css`display: flex; gap: 0.75rem;`}>
+                {/* Token Selector */}
+                <div css={css`position: relative; width: 140px;`}>
+                  <select
+                    value={collateralToken}
+                    onChange={(e) => setCollateralToken(e.target.value)}
+                    css={css`
+                      width: 100%;
+                      padding: 0.75rem 2rem 0.75rem 0.75rem;
+                      background: var(--bg-header);
+                      border: 1px solid var(--border-default);
+                      border-radius: 8px;
+                      color: var(--text-primary);
+                      font-size: 0.875rem;
+                      font-weight: 600;
+                      cursor: pointer;
+                      appearance: none;
+                      &:focus { outline: none; border-color: var(--clr-primary); }
+                    `}
+                  >
+                    {COLLATERAL_TOKENS.map(token => (
+                      <option key={token} value={token}>{token}</option>
+                    ))}
+                  </select>
+                  <CaretDown size={14} css={css`
+                    position: absolute;
+                    right: 0.75rem;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    color: var(--text-secondary);
+                    pointer-events: none;
+                  `} />
+                </div>
+
+                {/* Amount Input */}
+                <input
+                  type="number"
+                  placeholder="0.00"
+                  value={collateralAmount}
+                  onChange={(e) => setCollateralAmount(e.target.value)}
+                  css={css`
+                    flex: 1;
+                    padding: 0.75rem;
+                    background: var(--bg-header);
+                    border: 1px solid var(--border-default);
+                    border-radius: 8px;
+                    color: var(--text-primary);
+                    font-size: 1rem;
+                    font-weight: 600;
+                    &:focus { outline: none; border-color: var(--clr-primary); }
+                    &::placeholder { color: var(--text-tertiary); }
+                  `}
+                />
+              </div>
+
+              {quoteData?.currentPrices && collateralAmount && (
+                <div css={css`
+                  margin-top: 0.5rem;
+                  font-size: 0.75rem;
+                  color: var(--text-tertiary);
+                  text-align: right;
+                `}>
+                  ≈ ${(parseFloat(collateralAmount) * quoteData.currentPrices.collateral).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                </div>
+              )}
+            </div>
+
+            {/* Borrow Section */}
+            <div css={css`padding: 1.25rem; border-bottom: 1px solid var(--border-default);`}>
+              <h3 css={css`font-size: 0.875rem; font-weight: 600; color: var(--clr-primary); margin-bottom: 1rem;`}>
+                Borrow
+              </h3>
+
               <div css={css`position: relative; width: 140px;`}>
                 <select
-                  value={collateralToken}
-                  onChange={(e) => setCollateralToken(e.target.value)}
+                  value={borrowToken}
+                  onChange={(e) => setBorrowToken(e.target.value)}
                   css={css`
                     width: 100%;
                     padding: 0.75rem 2rem 0.75rem 0.75rem;
@@ -126,7 +199,7 @@ const OpenPosition = () => {
                     &:focus { outline: none; border-color: var(--clr-primary); }
                   `}
                 >
-                  {COLLATERAL_TOKENS.map(token => (
+                  {BORROW_TOKENS.map(token => (
                     <option key={token} value={token}>{token}</option>
                   ))}
                 </select>
@@ -139,159 +212,118 @@ const OpenPosition = () => {
                   pointer-events: none;
                 `} />
               </div>
-
-              {/* Amount Input */}
-              <input
-                type="number"
-                placeholder="0.00"
-                value={collateralAmount}
-                onChange={(e) => setCollateralAmount(e.target.value)}
-                css={css`
-                  flex: 1;
-                  padding: 0.75rem;
-                  background: var(--bg-header);
-                  border: 1px solid var(--border-default);
-                  border-radius: 8px;
-                  color: var(--text-primary);
-                  font-size: 1rem;
-                  font-weight: 600;
-                  &:focus { outline: none; border-color: var(--clr-primary); }
-                  &::placeholder { color: var(--text-tertiary); }
-                `}
-              />
             </div>
 
-            {quoteData?.currentPrices && collateralAmount && (
+            {/* Leverage Section */}
+            <div css={css`padding: 1.25rem; border-bottom: 1px solid var(--border-default);`}>
               <div css={css`
-                margin-top: 0.5rem;
-                font-size: 0.75rem;
-                color: var(--text-tertiary);
-                text-align: right;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 0.75rem;
               `}>
-                ≈ ${(parseFloat(collateralAmount) * quoteData.currentPrices.collateral).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                <h3 css={css`font-size: 0.875rem; font-weight: 600; color: var(--clr-primary);`}>
+                  Leverage
+                </h3>
+                <div css={css`display: flex; align-items: center; gap: 0.5rem;`}>
+                  <input
+                    type="number"
+                    min="1.1"
+                    max="10"
+                    step="0.1"
+                    value={leverage}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      if (!isNaN(val) && val >= 1.1 && val <= 10) {
+                        setLeverage(Math.round(val * 10) / 10);
+                      }
+                    }}
+                    css={css`
+                      width: 60px;
+                      padding: 0.375rem 0.5rem;
+                      background: var(--bg-header);
+                      border: 1px solid var(--border-default);
+                      border-radius: 6px;
+                      color: var(--clr-primary);
+                      font-size: 0.875rem;
+                      font-weight: 700;
+                      text-align: center;
+                      &:focus { outline: none; border-color: var(--clr-primary); }
+                    `}
+                  />
+                  <span css={css`font-size: 0.875rem; font-weight: 600; color: var(--text-secondary);`}>x</span>
+                </div>
               </div>
-            )}
-          </div>
 
-          {/* Borrow Section */}
-          <div css={css`
-            background: var(--bg-surface);
-            border: 1px solid var(--border-subtle);
-            border-radius: 12px;
-            padding: 1.25rem;
-          `}>
-            <h3 css={css`font-size: 0.875rem; font-weight: 600; color: var(--text-primary); margin-bottom: 1rem;`}>
-              Borrow
-            </h3>
-
-            <div css={css`position: relative; width: 140px;`}>
-              <select
-                value={borrowToken}
-                onChange={(e) => setBorrowToken(e.target.value)}
+              <input
+                type="range"
+                min="1.1"
+                max="10"
+                step="0.1"
+                value={leverage}
+                onChange={(e) => setLeverage(parseFloat(e.target.value))}
                 css={css`
                   width: 100%;
-                  padding: 0.75rem 2rem 0.75rem 0.75rem;
-                  background: var(--bg-header);
-                  border: 1px solid var(--border-default);
-                  border-radius: 8px;
-                  color: var(--text-primary);
-                  font-size: 0.875rem;
-                  font-weight: 600;
-                  cursor: pointer;
+                  height: 4px;
+                  background: linear-gradient(to right, var(--clr-primary) ${((leverage - 1.1) / 8.9) * 100}%, var(--bg-header) ${((leverage - 1.1) / 8.9) * 100}%);
+                  border-radius: 2px;
                   appearance: none;
-                  &:focus { outline: none; border-color: var(--clr-primary); }
-                `}
-              >
-                {BORROW_TOKENS.map(token => (
-                  <option key={token} value={token}>{token}</option>
-                ))}
-              </select>
-              <CaretDown size={14} css={css`
-                position: absolute;
-                right: 0.75rem;
-                top: 50%;
-                transform: translateY(-50%);
-                color: var(--text-secondary);
-                pointer-events: none;
-              `} />
-            </div>
-          </div>
-
-          {/* Leverage Slider */}
-          <div css={css`
-            background: var(--bg-surface);
-            border: 1px solid var(--border-subtle);
-            border-radius: 12px;
-            padding: 1.25rem;
-          `}>
-            <div css={css`
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              margin-bottom: 1rem;
-            `}>
-              <h3 css={css`font-size: 0.875rem; font-weight: 600; color: var(--text-primary);`}>
-                Leverage
-              </h3>
-              <span css={css`
-                font-size: 1.25rem;
-                font-weight: 700;
-                color: var(--clr-primary);
-              `}>
-                {leverage}x
-              </span>
-            </div>
-
-            <input
-              type="range"
-              min="1.5"
-              max="10"
-              step="0.5"
-              value={leverage}
-              onChange={(e) => setLeverage(parseFloat(e.target.value))}
-              css={css`
-                width: 100%;
-                height: 6px;
-                background: var(--bg-header);
-                border-radius: 3px;
-                appearance: none;
-                cursor: pointer;
-
-                &::-webkit-slider-thumb {
-                  appearance: none;
-                  width: 20px;
-                  height: 20px;
-                  background: var(--clr-primary);
-                  border-radius: 50%;
                   cursor: pointer;
-                }
-              `}
-            />
 
-            <div css={css`
-              display: flex;
-              justify-content: space-between;
-              margin-top: 0.5rem;
-            `}>
-              {LEVERAGE_MARKS.map(mark => (
-                <button
-                  key={mark}
-                  onClick={() => setLeverage(mark)}
-                  css={css`
-                    padding: 0.25rem 0.5rem;
-                    background: ${leverage === mark ? 'var(--clr-primary-bg)' : 'transparent'};
-                    border: 1px solid ${leverage === mark ? 'var(--clr-primary)' : 'var(--border-subtle)'};
-                    border-radius: 4px;
-                    color: ${leverage === mark ? 'var(--clr-primary)' : 'var(--text-tertiary)'};
-                    font-size: 0.6875rem;
-                    font-weight: 600;
+                  &::-webkit-slider-thumb {
+                    appearance: none;
+                    width: 14px;
+                    height: 14px;
+                    background: var(--clr-primary);
+                    border-radius: 50%;
                     cursor: pointer;
-                    &:hover { border-color: var(--border-default); }
-                  `}
-                >
-                  {mark}x
-                </button>
-              ))}
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+                  }
+                `}
+              />
+
+              <div css={css`
+                display: flex;
+                justify-content: space-between;
+                margin-top: 0.5rem;
+                gap: 0.25rem;
+              `}>
+                {LEVERAGE_MARKS.map(mark => (
+                  <button
+                    key={mark}
+                    onClick={() => setLeverage(mark)}
+                    css={css`
+                      padding: 0.2rem 0.4rem;
+                      background: ${leverage === mark ? 'var(--clr-primary-bg)' : 'transparent'};
+                      border: 1px solid ${leverage === mark ? 'var(--clr-primary)' : 'var(--border-default)'};
+                      border-radius: 4px;
+                      color: ${leverage === mark ? 'var(--clr-primary)' : 'var(--text-tertiary)'};
+                      font-size: 0.625rem;
+                      font-weight: 600;
+                      cursor: pointer;
+                      &:hover { border-color: var(--clr-primary); color: var(--text-secondary); }
+                    `}
+                  >
+                    {mark}x
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Open Position Button */}
+            <div css={css`padding: 1.25rem;`}>
+              <OpenPositionButton
+                quote={selectedQuote}
+                walletAddress={walletAddress}
+                collateralToken={collateralToken}
+                collateralAmount={parseFloat(collateralAmount) || 0}
+                borrowToken={borrowToken}
+                leverage={leverage}
+                selectedProtocol={selectedProtocol}
+                autoMonitor={autoMonitor}
+                enableAlerts={enableAlerts}
+                onSuccess={handleSuccess}
+              />
             </div>
           </div>
 
@@ -319,7 +351,7 @@ const OpenPosition = () => {
           {/* Options */}
           <div css={css`
             background: var(--bg-surface);
-            border: 1px solid var(--border-subtle);
+            border: 1px solid var(--border-default);
             border-radius: 12px;
             padding: 1rem;
           `}>
@@ -372,17 +404,6 @@ const OpenPosition = () => {
             </label>
           </div>
 
-          <OpenPositionButton
-            quote={selectedQuote}
-            walletAddress={walletAddress}
-            collateralToken={collateralToken}
-            collateralAmount={parseFloat(collateralAmount) || 0}
-            borrowToken={borrowToken}
-            selectedProtocol={selectedProtocol}
-            autoMonitor={autoMonitor}
-            enableAlerts={enableAlerts}
-            onSuccess={handleSuccess}
-          />
         </div>
       </div>
     </div>

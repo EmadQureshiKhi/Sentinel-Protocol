@@ -10,8 +10,11 @@ interface PositionCardProps {
 }
 
 const PositionCard = ({ position, onManage }: PositionCardProps) => {
-  const healthColor = position.healthFactor >= 2 ? 'var(--status-success)' :
-    position.healthFactor >= 1.5 ? 'var(--status-warning)' : 'var(--status-error)';
+  // Calculate health percentage: (1 - 1/healthFactor) * 100
+  // e.g., healthFactor 1.78 → 44% health, healthFactor 9 → 89% health
+  const healthPercent = Math.round((1 - 1 / position.healthFactor) * 100);
+  const healthColor = healthPercent >= 50 ? 'var(--status-success)' :
+    healthPercent >= 25 ? 'var(--status-warning)' : 'var(--status-error)';
 
   const pnlColor = position.unrealizedPnl >= 0 ? 'var(--status-success)' : 'var(--status-error)';
   const PnlIcon = position.unrealizedPnl >= 0 ? TrendUp : TrendDown;
@@ -51,7 +54,7 @@ const PositionCard = ({ position, onManage }: PositionCardProps) => {
           </span>
         </div>
 
-        {position.healthFactor < 1.5 && (
+        {healthPercent < 25 && (
           <Warning size={18} css={css`color: var(--status-warning);`} />
         )}
       </div>
@@ -90,13 +93,13 @@ const PositionCard = ({ position, onManage }: PositionCardProps) => {
             </div>
           </div>
 
-          {/* Health Factor */}
+          {/* Health */}
           <div>
             <div css={css`font-size: 0.6875rem; color: var(--text-tertiary); margin-bottom: 0.25rem;`}>
-              Health Factor
+              Health
             </div>
             <div css={css`font-size: 1rem; font-weight: 700; color: ${healthColor};`}>
-              {position.healthFactor.toFixed(2)}
+              {healthPercent}%
             </div>
           </div>
 
@@ -122,7 +125,7 @@ const PositionCard = ({ position, onManage }: PositionCardProps) => {
           </div>
         </div>
 
-        {/* Liquidation Info */}
+        {/* Health & Price Info */}
         <div css={css`
           display: flex;
           justify-content: space-between;
@@ -131,7 +134,7 @@ const PositionCard = ({ position, onManage }: PositionCardProps) => {
           font-size: 0.75rem;
         `}>
           <span css={css`color: var(--text-tertiary);`}>
-            Liq. Price: <span css={css`color: var(--status-error);`}>${position.liquidationPrice.toFixed(2)}</span>
+            Health: <span css={css`color: ${healthColor}; font-weight: 600;`}>{healthPercent}%</span>
           </span>
           <span css={css`color: var(--text-tertiary);`}>
             Entry: ${position.entryPrice.toFixed(2)} → Current: ${position.currentPrice.toFixed(2)}

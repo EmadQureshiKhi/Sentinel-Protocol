@@ -27,7 +27,7 @@ const PositionPreview = ({
     return (
       <div css={css`
         background: var(--bg-surface);
-        border: 1px solid var(--border-subtle);
+        border: 1px solid var(--border-default);
         border-radius: 12px;
         padding: 1.5rem;
       `}>
@@ -57,7 +57,7 @@ const PositionPreview = ({
     return (
       <div css={css`
         background: var(--bg-surface);
-        border: 1px solid var(--border-subtle);
+        border: 1px solid var(--border-default);
         border-radius: 12px;
         padding: 2rem;
         text-align: center;
@@ -78,19 +78,19 @@ const PositionPreview = ({
   return (
     <div css={css`
       background: var(--bg-surface);
-      border: 1px solid var(--border-subtle);
+      border: 1px solid var(--border-default);
       border-radius: 12px;
       overflow: hidden;
     `}>
       <div css={css`
         padding: 1rem 1.25rem;
         background: var(--bg-header);
-        border-bottom: 1px solid var(--border-subtle);
+        border-bottom: 1px solid var(--border-default);
       `}>
         <h3 css={css`
           font-size: 0.875rem;
           font-weight: 600;
-          color: var(--text-primary);
+          color: var(--clr-primary);
         `}>
           Position Preview
         </h3>

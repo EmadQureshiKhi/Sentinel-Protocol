@@ -17,7 +17,7 @@ interface TokenRate {
 }
 
 interface ProtocolRates {
-  protocol: 'DRIFT' | 'MARGINFI' | 'SOLEND';
+  protocol: 'DRIFT' | 'KAMINO' | 'SAVE' | 'LOOPSCALE';
   rates: TokenRate[];
   tvl: number;
 }
