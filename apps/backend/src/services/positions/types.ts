@@ -68,6 +68,23 @@ export interface OpenPositionResponse {
   success: boolean;
   transaction?: string; // Base64 encoded unsigned transaction
   positionId?: string;
+  // Position data for frontend to create record after tx confirmation
+  positionData?: {
+    walletAddress: string;
+    protocol: ProtocolName;
+    network: NetworkType;
+    collateralToken: string;
+    collateralMint: string;
+    collateralAmount: number;
+    borrowToken: string;
+    borrowMint: string;
+    borrowAmount: number;
+    leverage: number;
+    entryPrice: number;
+    liquidationPrice: number;
+    healthFactor: number;
+    autoMonitor: boolean;
+  };
   estimatedFees: {
     protocolFee: number;
     networkFee: number;

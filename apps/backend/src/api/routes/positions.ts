@@ -282,20 +282,73 @@ router.post('/:id/adjust', async (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/positions/:id/confirm
- * Confirm position was opened (after tx confirmation)
+ * POST /api/positions/confirm
+ * Create position record after transaction confirmation
  */
-router.post('/:id/confirm', async (req: Request, res: Response) => {
+router.post('/confirm', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    const { txSignature } = req.body;
+    const {
+      walletAddress,
+      protocol,
+      network,
+      collateralToken,
+      collateralMint,
+      collateralAmount,
+      borrowToken,
+      borrowMint,
+      borrowAmount,
+      leverage,
+      entryPrice,
+      liquidationPrice,
+      healthFactor,
+      txSignature,
+      autoMonitor,
+    } = req.body;
 
-    const position = await prisma.position.update({
-      where: { id },
+    if (!walletAddress || !protocol || !txSignature) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields',
+      });
+    }
+
+    // Create position record
+    const position = await prisma.position.create({
       data: {
+        walletAddress,
+        protocol,
+        network: network === 'mainnet-beta' ? 'MAINNET' : 'DEVNET',
+        status: 'OPEN',
+        collateralToken,
+        collateralMint: collateralMint || collateralToken,
+        collateralAmount: parseFloat(collateralAmount),
+        borrowToken,
+        borrowMint: borrowMint || borrowToken,
+        borrowAmount: parseFloat(borrowAmount || '0'),
+        leverage: parseFloat(leverage),
+        entryPrice: parseFloat(entryPrice),
+        liquidationPrice: parseFloat(liquidationPrice),
+        openHealthFactor: parseFloat(healthFactor),
         openTxSignature: txSignature,
       },
     });
+
+    // Auto-add to monitoring if requested
+    if (autoMonitor) {
+      const existing = await prisma.monitoredAccount.findUnique({
+        where: { walletAddress },
+      });
+
+      if (!existing) {
+        await prisma.monitoredAccount.create({
+          data: {
+            walletAddress,
+            protocol,
+            isActive: true,
+          },
+        });
+      }
+    }
 
     res.json({
       success: true,
@@ -306,6 +359,132 @@ router.post('/:id/confirm', async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       error: 'Failed to confirm position',
+    });
+  }
+});
+
+/**
+ * GET /api/positions/history/transactions
+ * Get transaction history for a wallet (positions + swaps)
+ */
+router.get('/history/transactions', async (req: Request, res: Response) => {
+  try {
+    const { walletAddress, limit = 50 } = req.query;
+
+    if (!walletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'walletAddress is required',
+      });
+    }
+
+    // Fetch positions
+    const positions = await prisma.position.findMany({
+      where: { walletAddress: walletAddress as string },
+      orderBy: { openedAt: 'desc' },
+      take: parseInt(limit as string),
+    });
+
+    // Fetch protective swaps
+    const account = await prisma.monitoredAccount.findUnique({
+      where: { walletAddress: walletAddress as string },
+      include: {
+        protectiveSwaps: {
+          orderBy: { createdAt: 'desc' },
+          take: parseInt(limit as string),
+        },
+      },
+    });
+
+    // Combine and format transactions
+    const transactions = [
+      ...positions.map(p => ({
+        id: p.id,
+        type: 'POSITION_OPEN' as const,
+        timestamp: p.openedAt,
+        protocol: p.protocol,
+        status: p.status === 'OPEN' ? 'CONFIRMED' : p.status,
+        txSignature: p.openTxSignature,
+        details: {
+          collateralToken: p.collateralToken,
+          collateralAmount: p.collateralAmount,
+          borrowToken: p.borrowToken,
+          borrowAmount: p.borrowAmount,
+          leverage: p.leverage,
+        },
+      })),
+      ...(account?.protectiveSwaps || []).map(s => ({
+        id: s.id,
+        type: 'PROTECTIVE_SWAP' as const,
+        timestamp: s.createdAt,
+        protocol: account?.protocol || 'DRIFT',
+        status: s.status,
+        txSignature: s.transactionSignature,
+        details: {
+          fromToken: s.fromToken,
+          toToken: s.toToken,
+          inputAmount: s.inputAmount,
+          outputAmount: s.outputAmount,
+          mevSaved: s.mevSaved,
+        },
+      })),
+    ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+      .slice(0, parseInt(limit as string));
+
+    res.json({
+      success: true,
+      data: transactions,
+    });
+  } catch (error) {
+    logger.error('Error getting transaction history', { error });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get transaction history',
+    });
+  }
+});
+
+/**
+ * DELETE /api/positions/:id
+ * Delete a position (for cleanup)
+ */
+router.delete('/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { walletAddress } = req.query;
+
+    // Verify ownership
+    const position = await prisma.position.findUnique({
+      where: { id },
+    });
+
+    if (!position) {
+      return res.status(404).json({
+        success: false,
+        error: 'Position not found',
+      });
+    }
+
+    if (position.walletAddress !== walletAddress) {
+      return res.status(403).json({
+        success: false,
+        error: 'Unauthorized',
+      });
+    }
+
+    await prisma.position.delete({
+      where: { id },
+    });
+
+    res.json({
+      success: true,
+      message: 'Position deleted',
+    });
+  } catch (error) {
+    logger.error('Error deleting position', { error });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete position',
     });
   }
 });

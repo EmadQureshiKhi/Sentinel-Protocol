@@ -6,28 +6,36 @@
 import { logger } from '../../utils/logger';
 import { DatabaseService } from '../database';
 import { NetworkType, ProtocolName } from '../protocols/types';
+import { priceService } from '../prices';
 import { PnLBreakdown } from './types';
 
 const prisma = DatabaseService.getInstance().getClient();
 
-// Mock prices
-const MOCK_PRICES: Record<string, number> = {
-  SOL: 185.50,
-  USDC: 1.00,
-  USDT: 1.00,
-  mSOL: 205.25,
-  jitoSOL: 210.80,
-};
-
 export class PnLService {
   private network: NetworkType;
+  private priceCache: Map<string, number> = new Map();
 
   constructor(network: NetworkType = 'mainnet-beta') {
     this.network = network;
   }
 
-  private getTokenPrice(token: string): number {
-    return MOCK_PRICES[token.toUpperCase()] || 1.0;
+  /**
+   * Get token price from Jupiter API
+   */
+  private async getTokenPrice(token: string): Promise<number> {
+    if (this.priceCache.has(token)) {
+      return this.priceCache.get(token)!;
+    }
+
+    const price = await priceService.getPriceBySymbol(token);
+    
+    // Fallback for stablecoins
+    if (price === 0 && token.toUpperCase().includes('USD')) {
+      return 1.0;
+    }
+    
+    this.priceCache.set(token, price);
+    return price;
   }
 
   /**
@@ -35,6 +43,7 @@ export class PnLService {
    */
   async getPnLBreakdown(walletAddress: string): Promise<PnLBreakdown> {
     logger.info('Getting P&L breakdown', { walletAddress });
+    this.priceCache.clear();
 
     const networkFilter = this.network === 'mainnet-beta' ? 'MAINNET' : 'DEVNET';
 
@@ -52,7 +61,7 @@ export class PnLService {
     let totalRealizedPnl = 0;
 
     for (const position of positions) {
-      const collateralPrice = this.getTokenPrice(position.collateralToken);
+      const collateralPrice = await this.getTokenPrice(position.collateralToken);
       const entryValue = position.collateralAmount * position.entryPrice;
       const currentValue = position.collateralAmount * collateralPrice;
 

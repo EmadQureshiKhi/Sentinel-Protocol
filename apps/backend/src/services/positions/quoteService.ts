@@ -6,23 +6,13 @@
 import { logger } from '../../utils/logger';
 import { getRateAggregator } from '../protocols/rateAggregator';
 import { ProtocolName, NetworkType, TokenRate, ProtocolRates } from '../protocols/types';
+import { priceService, TOKEN_MINTS } from '../prices';
 import {
   PositionQuoteRequest,
   PositionQuoteResponse,
   ProtocolQuote,
   TokenPrice,
 } from './types';
-
-// Mock prices - in production, fetch from Pyth/Switchboard
-const MOCK_PRICES: Record<string, number> = {
-  SOL: 185.50,
-  USDC: 1.00,
-  USDT: 1.00,
-  mSOL: 205.25,
-  jitoSOL: 210.80,
-  ETH: 3450.00,
-  BTC: 97500.00,
-};
 
 export class QuoteService {
   private network: NetworkType;
@@ -32,38 +22,42 @@ export class QuoteService {
   }
 
   /**
-   * Get current token price
+   * Get current token price from Jupiter API
    */
   async getTokenPrice(token: string): Promise<TokenPrice> {
-    const price = MOCK_PRICES[token.toUpperCase()] || 1.0;
+    const priceData = await priceService.getPrice(token);
+    
+    if (!priceData) {
+      logger.warn('Failed to fetch price, using fallback', { token });
+      // Fallback for stablecoins
+      const fallbackPrice = token.toUpperCase().includes('USD') ? 1.0 : 0;
+      return {
+        token: token.toUpperCase(),
+        mint: TOKEN_MINTS[token.toUpperCase()] || token,
+        price: fallbackPrice,
+        confidence: 0,
+        source: 'fallback',
+        updatedAt: new Date(),
+      };
+    }
     
     return {
-      token: token.toUpperCase(),
-      mint: this.getTokenMint(token),
-      price,
+      token: priceData.symbol,
+      mint: priceData.mint,
+      price: priceData.price,
       confidence: 0.99,
-      source: 'mock',
-      updatedAt: new Date(),
+      source: 'jupiter',
+      updatedAt: new Date(priceData.timestamp),
     };
-  }
-
-  /**
-   * Get token mint address
-   */
-  private getTokenMint(token: string): string {
-    const mints: Record<string, string> = {
-      SOL: 'So11111111111111111111111111111111111111112',
-      USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-      USDT: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
-      mSOL: 'mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So',
-      jitoSOL: 'J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn',
-    };
-    return mints[token.toUpperCase()] || token;
   }
 
 
   /**
    * Calculate liquidation price for a position
+   * For a long position (collateral = volatile asset, debt = stable):
+   * Liquidation occurs when collateralValue * liquidationThreshold <= debtValue
+   * So: collateralAmount * liqPrice * threshold = borrowAmount * borrowPrice
+   * liqPrice = (borrowAmount * borrowPrice) / (collateralAmount * threshold)
    */
   calculateLiquidationPrice(
     collateralAmount: number,
@@ -72,12 +66,14 @@ export class QuoteService {
     borrowPrice: number,
     liquidationThreshold: number
   ): number {
-    // Liquidation occurs when: collateralValue * liquidationThreshold = borrowValue
-    // collateralAmount * liquidationPrice * threshold = borrowAmount * borrowPrice
-    // liquidationPrice = (borrowAmount * borrowPrice) / (collateralAmount * threshold)
+    if (borrowAmount === 0 || collateralAmount === 0) return 0;
     
+    // Convert threshold from percentage (e.g., 85) to decimal (0.85)
+    const thresholdDecimal = liquidationThreshold / 100;
+    
+    // Liquidation price = debt value / (collateral amount * threshold)
     const borrowValue = borrowAmount * borrowPrice;
-    const liquidationPrice = borrowValue / (collateralAmount * (liquidationThreshold / 100));
+    const liquidationPrice = borrowValue / (collateralAmount * thresholdDecimal);
     
     return liquidationPrice;
   }
@@ -117,11 +113,10 @@ export class QuoteService {
     const borrowAmount = borrowValueUsd / borrowPrice.price;
 
     const quotes: ProtocolQuote[] = [];
-    const protocols: ProtocolName[] = ['DRIFT', 'MARGINFI', 'SOLEND'];
-
-    for (const protocol of protocols) {
-      const protocolData = allRates.protocols.find((p: ProtocolRates) => p.protocol === protocol);
-      if (!protocolData) continue;
+    
+    // Use all available protocols from the rate aggregator
+    for (const protocolData of allRates.protocols) {
+      const protocol = protocolData.protocol;
 
       const collateralRate = protocolData.rates.find(
         (r: TokenRate) => r.token.toUpperCase() === request.collateralToken.toUpperCase()

@@ -5,33 +5,45 @@
 
 import { logger } from '../../utils/logger';
 import { DatabaseService } from '../database';
-import { getQuoteService } from '../positions/quoteService';
 import { NetworkType, ProtocolName } from '../protocols/types';
+import { priceService } from '../prices';
 import { PortfolioSummary, PortfolioPosition, PortfolioHistory } from './types';
 
 const prisma = DatabaseService.getInstance().getClient();
 
-// Mock prices - in production, fetch from Pyth/Switchboard
-const MOCK_PRICES: Record<string, number> = {
-  SOL: 185.50,
-  USDC: 1.00,
-  USDT: 1.00,
-  mSOL: 205.25,
-  jitoSOL: 210.80,
-};
-
 export class PortfolioService {
   private network: NetworkType;
+  private priceCache: Map<string, number> = new Map();
 
   constructor(network: NetworkType = 'mainnet-beta') {
     this.network = network;
   }
 
   /**
-   * Get token price
+   * Get token price from Jupiter API
    */
-  private getTokenPrice(token: string): number {
-    return MOCK_PRICES[token.toUpperCase()] || 1.0;
+  private async getTokenPrice(token: string): Promise<number> {
+    // Check local cache first (valid for this request)
+    if (this.priceCache.has(token)) {
+      return this.priceCache.get(token)!;
+    }
+
+    const price = await priceService.getPriceBySymbol(token);
+    
+    // Fallback for stablecoins if API fails
+    if (price === 0 && token.toUpperCase().includes('USD')) {
+      return 1.0;
+    }
+    
+    this.priceCache.set(token, price);
+    return price;
+  }
+
+  /**
+   * Clear price cache (call at start of each request)
+   */
+  private clearPriceCache(): void {
+    this.priceCache.clear();
   }
 
   /**
@@ -39,6 +51,7 @@ export class PortfolioService {
    */
   async getPortfolio(walletAddress: string): Promise<PortfolioSummary> {
     logger.info('Getting portfolio', { walletAddress });
+    this.clearPriceCache();
 
     const networkFilter = this.network === 'mainnet-beta' ? 'MAINNET' : 'DEVNET';
 
@@ -59,8 +72,8 @@ export class PortfolioService {
 
 
     for (const position of positions) {
-      const collateralPrice = this.getTokenPrice(position.collateralToken);
-      const borrowPrice = this.getTokenPrice(position.borrowToken);
+      const collateralPrice = await this.getTokenPrice(position.collateralToken);
+      const borrowPrice = await this.getTokenPrice(position.borrowToken);
 
       const collateralValue = position.collateralAmount * collateralPrice;
       const debtValue = position.borrowAmount * borrowPrice;
@@ -111,6 +124,7 @@ export class PortfolioService {
    * Get all positions with current values
    */
   async getPositions(walletAddress: string): Promise<PortfolioPosition[]> {
+    this.clearPriceCache();
     const networkFilter = this.network === 'mainnet-beta' ? 'MAINNET' : 'DEVNET';
 
     const positions = await prisma.position.findMany({
@@ -121,17 +135,32 @@ export class PortfolioService {
       orderBy: { openedAt: 'desc' },
     });
 
-    return positions.map(position => {
-      const collateralPrice = this.getTokenPrice(position.collateralToken);
-      const borrowPrice = this.getTokenPrice(position.borrowToken);
+    const results: PortfolioPosition[] = [];
+    
+    for (const position of positions) {
+      const collateralPrice = await this.getTokenPrice(position.collateralToken);
+      const borrowPrice = await this.getTokenPrice(position.borrowToken);
 
       const collateralValueUsd = position.collateralAmount * collateralPrice;
       const borrowValueUsd = position.borrowAmount * borrowPrice;
 
-      // Calculate health factor
+      // Calculate health factor (using 85% liquidation threshold)
+      const liquidationThreshold = 0.85;
       const healthFactor = borrowValueUsd > 0 
-        ? (collateralValueUsd * 0.85) / borrowValueUsd 
+        ? (collateralValueUsd * liquidationThreshold) / borrowValueUsd 
         : 999;
+
+      // Calculate liquidation price dynamically
+      // Liquidation occurs when: collateralAmount * liqPrice * threshold = borrowValueUsd
+      // liqPrice = borrowValueUsd / (collateralAmount * threshold)
+      const liquidationPrice = position.collateralAmount > 0 && borrowValueUsd > 0
+        ? borrowValueUsd / (position.collateralAmount * liquidationThreshold)
+        : 0;
+
+      // Calculate actual leverage from current values
+      const actualLeverage = collateralValueUsd > borrowValueUsd 
+        ? collateralValueUsd / (collateralValueUsd - borrowValueUsd)
+        : position.leverage;
 
       // Calculate P&L
       const entryValue = position.collateralAmount * position.entryPrice;
@@ -139,7 +168,7 @@ export class PortfolioService {
       const unrealizedPnl = currentValue - entryValue;
       const unrealizedPnlPercent = entryValue > 0 ? (unrealizedPnl / entryValue) * 100 : 0;
 
-      return {
+      results.push({
         id: position.id,
         protocol: position.protocol as ProtocolName,
         network: this.network,
@@ -150,48 +179,88 @@ export class PortfolioService {
         borrowToken: position.borrowToken,
         borrowAmount: position.borrowAmount,
         borrowValueUsd,
-        leverage: position.leverage,
+        leverage: actualLeverage,
         healthFactor,
-        liquidationPrice: position.liquidationPrice,
+        liquidationPrice,
         entryPrice: position.entryPrice,
         currentPrice: collateralPrice,
         unrealizedPnl,
         unrealizedPnlPercent,
         openedAt: position.openedAt,
-      };
-    });
+      });
+    }
+    
+    return results;
   }
 
   /**
    * Get portfolio history for charts
+   * Queries PositionHistory table for historical snapshots
    */
   async getPortfolioHistory(
     walletAddress: string,
     days: number = 30
   ): Promise<PortfolioHistory[]> {
-    // In production, this would query PositionHistory table
-    // For now, return mock data
-    const history: PortfolioHistory[] = [];
-    const now = new Date();
+    const since = new Date();
+    since.setDate(since.getDate() - days);
 
-    for (let i = days; i >= 0; i--) {
-      const date = new Date(now);
-      date.setDate(date.getDate() - i);
+    // Get all positions for this wallet
+    const networkFilter = this.network === 'mainnet-beta' ? 'MAINNET' : 'DEVNET';
+    const positions = await prisma.position.findMany({
+      where: {
+        walletAddress,
+        network: networkFilter,
+      },
+      select: { id: true },
+    });
 
-      // Generate mock historical data with some variance
-      const baseCollateral = 5000 + Math.random() * 1000;
-      const baseDebt = 3000 + Math.random() * 500;
-
-      history.push({
-        timestamp: date,
-        totalCollateralUsd: baseCollateral,
-        totalDebtUsd: baseDebt,
-        netWorth: baseCollateral - baseDebt,
-        aggregateHealthFactor: (baseCollateral * 0.85) / baseDebt,
-      });
+    if (positions.length === 0) {
+      return [];
     }
 
-    return history;
+    const positionIds = positions.map(p => p.id);
+
+    // Get historical snapshots
+    const snapshots = await prisma.positionHistory.findMany({
+      where: {
+        positionId: { in: positionIds },
+        createdAt: { gte: since },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    // Group by day and aggregate
+    const dailyData = new Map<string, PortfolioHistory>();
+
+    for (const snapshot of snapshots) {
+      const dateKey = snapshot.createdAt.toISOString().split('T')[0];
+      
+      if (!dailyData.has(dateKey)) {
+        dailyData.set(dateKey, {
+          timestamp: new Date(dateKey),
+          totalCollateralUsd: 0,
+          totalDebtUsd: 0,
+          netWorth: 0,
+          aggregateHealthFactor: 0,
+        });
+      }
+
+      const day = dailyData.get(dateKey)!;
+      day.totalCollateralUsd += snapshot.collateralValue;
+      day.totalDebtUsd += snapshot.borrowValue;
+    }
+
+    // Calculate derived values
+    const history: PortfolioHistory[] = [];
+    for (const [, day] of dailyData) {
+      day.netWorth = day.totalCollateralUsd - day.totalDebtUsd;
+      day.aggregateHealthFactor = day.totalDebtUsd > 0 
+        ? (day.totalCollateralUsd * 0.85) / day.totalDebtUsd 
+        : 999;
+      history.push(day);
+    }
+
+    return history.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
   }
 }
 
