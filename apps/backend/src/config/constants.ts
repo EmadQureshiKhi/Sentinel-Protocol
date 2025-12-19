@@ -70,7 +70,7 @@ export const RISK_THRESHOLDS = {
   HVIX_HIGH: 3.5,
 
   // Alert thresholds
-  ALERT_RISK_THRESHOLD: 60,
+  ALERT_RISK_THRESHOLD: 30, // Lowered from 60 to trigger alerts for demo account
   ALERT_CASCADE_PROBABILITY: 0.6,
 } as const;
 

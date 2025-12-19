@@ -202,8 +202,18 @@ export class DatabaseService {
   // ==========================================
 
   async createSnapshot(input: CreateSnapshotInput) {
+    // Sanitize values - Prisma can't handle Infinity or NaN
+    const sanitizedInput = {
+      ...input,
+      healthFactor: Number.isFinite(input.healthFactor) ? input.healthFactor : 999,
+      leverage: Number.isFinite(input.leverage) ? input.leverage : 1,
+      currentMarginRatio: Number.isFinite(input.currentMarginRatio) ? input.currentMarginRatio : 999,
+      collateralValue: Number.isFinite(input.collateralValue) ? input.collateralValue : 0,
+      borrowedValue: Number.isFinite(input.borrowedValue) ? input.borrowedValue : 0,
+    };
+    
     return this.prisma.accountSnapshot.create({
-      data: input,
+      data: sanitizedInput,
     });
   }
 
@@ -432,12 +442,17 @@ export class DatabaseService {
       this.prisma.alert.count({ where: { status: AlertStatus.ACTIVE } }),
       this.prisma.protectiveSwap.count({ where: { status: SwapStatus.CONFIRMED } }),
       this.getTotalMevSaved(),
-      this.prisma.accountSnapshot.count({
-        where: {
-          riskScore: { gte: 60 },
-          createdAt: { gte: new Date(Date.now() - 60000) }, // Last minute
-        },
-      }),
+      // Count unique accounts with risk score >= 30 (using distinct accountId)
+      this.prisma.accountSnapshot
+        .findMany({
+          where: {
+            riskScore: { gte: 30 },
+            createdAt: { gte: new Date(Date.now() - 60000) }, // Last minute
+          },
+          distinct: ['accountId'],
+          select: { accountId: true },
+        })
+        .then((snapshots) => snapshots.length),
     ]);
 
     return {
