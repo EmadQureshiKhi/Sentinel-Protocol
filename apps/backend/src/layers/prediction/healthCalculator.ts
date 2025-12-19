@@ -182,7 +182,114 @@ export class HealthCalculator {
   }
 
   /**
+   * Parse Drift account data using a shared Drift client (preferred)
+   * This avoids creating new subscriptions on every call
+   */
+  async parseDriftAccountDataWithClient(
+    userAccountAddress: string,
+    driftClient: any
+  ): Promise<PositionData | null> {
+    try {
+      const { PublicKey } = await import('@solana/web3.js');
+      const userPubkey = new PublicKey(userAccountAddress);
+      
+      // Check if user already exists in client (avoid adding duplicate subscriptions)
+      let user;
+      try {
+        // First try to get existing user
+        user = driftClient.getUser(0, userPubkey);
+        if (user) {
+          // User already added, just use it
+          logger.debug('Using existing user in drift client', { userAccountAddress });
+        }
+      } catch (error) {
+        // User doesn't exist in client, need to add them
+        user = null;
+      }
+      
+      // Only add user if they don't exist (this creates subscriptions)
+      if (!user) {
+        try {
+          await driftClient.addUser(0, userPubkey);
+          user = driftClient.getUser(0, userPubkey);
+          logger.debug('Added new user to drift client', { userAccountAddress });
+        } catch (addError: any) {
+          // If user already exists (race condition), try to get them again
+          if (addError?.message?.includes('already exists')) {
+            user = driftClient.getUser(0, userPubkey);
+          } else {
+            throw addError;
+          }
+        }
+      }
+
+      // Get account data - check if it exists first
+      const userAccountData = user.getUserAccountPublicKey();
+      if (!userAccountData) {
+        logger.warn('No Drift account found for user', { userAccountAddress });
+        return null;
+      }
+
+      // Try to get user account, handle if it doesn't exist
+      let userAccount;
+      try {
+        userAccount = user.getUserAccount();
+        if (!userAccount) {
+          logger.warn('User account data is null', { userAccountAddress });
+          return null;
+        }
+      } catch (error) {
+        logger.warn('Failed to get user account (likely no position)', { userAccountAddress });
+        return null;
+      }
+      
+      // Calculate total collateral value (in USD)
+      const totalCollateral = user.getTotalCollateral();
+      const collateralValueUSD = totalCollateral.toNumber() / 1e6;
+
+      // Calculate total liability/debt value (in USD)
+      const totalLiabilityValue = user.getTotalLiabilityValue();
+      const debtValueUSD = totalLiabilityValue.toNumber() / 1e6;
+
+      // Get margin ratio
+      const marginRatio = user.getMarginRatio();
+      
+      // Calculate liquidation threshold
+      const maintenanceMarginRatio = 0.0625; // 6.25% for Drift
+      const liquidationThreshold = 1 - maintenanceMarginRatio; // ~93.75%
+
+      // Get oracle price for SOL
+      const spotMarkets = driftClient.getSpotMarketAccounts();
+      const solMarket = spotMarkets.find((m: any) => m.marketIndex === 1);
+      const oraclePrice = solMarket ? solMarket.historicalOracleData.lastOraclePrice.toNumber() / 1e6 : 0;
+
+      // Calculate liquidation price
+      const liquidationPrice = debtValueUSD / (collateralValueUSD * liquidationThreshold);
+
+      logger.info('Successfully parsed Drift account data', {
+        userAccount: userAccountAddress,
+        collateralValue: collateralValueUSD,
+        debtValue: debtValueUSD,
+        marginRatio: marginRatio.toNumber(),
+      });
+
+      return {
+        collateralValue: collateralValueUSD,
+        borrowedValue: debtValueUSD,
+        liquidationThreshold,
+        maintenanceMarginRatio,
+        oraclePrice,
+        liquidationPrice,
+      };
+    } catch (error) {
+      logger.error('Failed to parse Drift account data with shared client:', error);
+      return null;
+    }
+  }
+
+  /**
    * Parse Drift account data to extract position info using Drift SDK
+   * NOTE: This creates a new client each time - use parseDriftAccountDataWithClient instead
    */
   async parseDriftAccountData(
     userAccountAddress: string,

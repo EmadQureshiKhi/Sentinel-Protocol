@@ -154,11 +154,21 @@ export class CascadeDetector {
     indicators: CascadeIndicators
   ): CascadeRiskScore {
     // Component 1: Health Factor Risk (0-40 points)
-    // Health factor 1.0 = 0 risk, Health factor 0.2 = 40 risk
-    const healthFactorRisk = Math.max(
-      0,
-      Math.min(RISK_WEIGHTS.HEALTH_FACTOR, (1 - account.healthFactor) * RISK_WEIGHTS.HEALTH_FACTOR)
-    );
+    // Health factor >= 2.0 = 0 risk (safe)
+    // Health factor 1.5 = 20 risk (caution)
+    // Health factor 1.2 = 32 risk (danger)
+    // Health factor < 1.1 = 40 risk (critical)
+    let healthFactorRisk = 0;
+    if (account.healthFactor < 1.1) {
+      healthFactorRisk = 40; // Critical
+    } else if (account.healthFactor < 1.3) {
+      healthFactorRisk = 32; // Danger
+    } else if (account.healthFactor < 1.5) {
+      healthFactorRisk = 24; // Caution
+    } else if (account.healthFactor < 2.0) {
+      healthFactorRisk = 16; // Moderate
+    }
+    // else healthFactorRisk = 0 (Safe)
 
     // Component 2: Volatility Risk (0-30 points)
     // HVIX 1.0 = 0 risk, HVIX 3.0+ = 30 risk
