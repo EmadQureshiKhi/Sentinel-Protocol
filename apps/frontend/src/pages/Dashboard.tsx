@@ -6,6 +6,7 @@ import { StatsOverview, AlertFeed } from '../components/dashboard';
 import { Modal } from '../components/common';
 import { useAccounts, useAddAccount, useRemoveAccount } from '../hooks/useAccounts';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { useWallet } from '../contexts';
 import { 
   Plus, 
   Circle, 
@@ -19,6 +20,9 @@ import {
   Lightning
 } from '@phosphor-icons/react';
 
+// Demo wallet that's always visible
+const DEMO_WALLET = 'DYw8jCTfwHNRJhhmFcbXvVDTqWMEVFBX6ZKUmG5CNSKK';
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -26,10 +30,19 @@ export default function Dashboard() {
   const [newProtocol, setNewProtocol] = useState<'DRIFT' | 'KAMINO' | 'SAVE' | 'LOOPSCALE'>('DRIFT');
   const [accountToDelete, setAccountToDelete] = useState<string | null>(null);
   
-  const { data: accounts, isLoading } = useAccounts({ isActive: true });
+  const { data: allAccounts, isLoading } = useAccounts({ isActive: true });
+  const { connection } = useWallet();
+  const connectedWallet = connection?.account?.publicKey;
   const addAccountMutation = useAddAccount();
   const removeAccountMutation = useRemoveAccount();
   const wsState = useWebSocket();
+
+  // Filter accounts: show demo account always + accounts matching connected wallet
+  const accounts = allAccounts?.filter(account => {
+    const isDemo = account.walletAddress === DEMO_WALLET;
+    const isOwnAccount = connectedWallet && account.walletAddress === connectedWallet;
+    return isDemo || isOwnAccount;
+  });
 
   const handleAddAccount = async () => {
     if (!newWallet) return;
@@ -303,6 +316,23 @@ export default function Dashboard() {
                                 weight="fill" 
                                 color={account.isActive ? '#4ade80' : '#666'} 
                               />
+                              
+                              {/* Demo Badge */}
+                              {account.walletAddress === DEMO_WALLET && (
+                                <span css={css`
+                                  padding: 0.125rem 0.5rem;
+                                  background: rgba(255, 165, 0, 0.15);
+                                  border: 1px solid rgba(255, 165, 0, 0.3);
+                                  border-radius: 4px;
+                                  font-size: 0.625rem;
+                                  font-weight: 700;
+                                  color: #ffa500;
+                                  text-transform: uppercase;
+                                  letter-spacing: 0.5px;
+                                `}>
+                                  DEMO
+                                </span>
+                              )}
                             </div>
 
                             {/* Stats Row */}
