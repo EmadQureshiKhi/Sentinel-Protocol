@@ -27,19 +27,87 @@ const PositionDetailModal = ({ position, walletAddress, onClose }: PositionDetai
 
   const handleClosePosition = async () => {
     try {
+      // Step 1: Get the close transaction from backend
       const result = await closePosition({
         positionId: position.id,
         walletAddress,
         slippageBps: 50,
       });
 
-      if (result.success) {
-        showSuccess('Position Closed', `Realized P&L: ${formatUsd(result.realizedPnl)}`);
-        onClose();
-      } else {
-        showError('Failed to Close', result.error || 'Unknown error');
+      if (!result.success || !result.transaction) {
+        showError('Failed to Close', result.error || 'No transaction returned');
+        return;
       }
+
+      // Step 2: Deserialize the transaction
+      const { Connection, Transaction } = await import('@solana/web3.js');
+      const connection = new Connection(
+        import.meta.env.VITE_MAINNET_RPC_URL || 'https://api.mainnet-beta.solana.com',
+        'confirmed'
+      );
+
+      // Deserialize transaction (legacy only for now)
+      const transaction = Transaction.from(Buffer.from(result.transaction, 'base64'));
+
+      // Step 3: Refresh the blockhash (CRITICAL - prevents "Blockhash not found" error)
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
+      transaction.recentBlockhash = blockhash;
+      transaction.lastValidBlockHeight = lastValidBlockHeight;
+
+      // Step 4: Sign with wallet (Phantom/Solflare)
+      const wallet = (window as any).solana || (window as any).solflare;
+      if (!wallet) {
+        showError('Wallet Not Found', 'Please connect your wallet');
+        return;
+      }
+
+      const signedTx = await wallet.signTransaction(transaction);
+      
+      if (!signedTx) {
+        showError('Signing Failed', 'Please approve the transaction in your wallet');
+        return;
+      }
+
+      // Step 5: Send transaction
+      const signature = await connection.sendRawTransaction(
+        signedTx.serialize(),
+        {
+          skipPreflight: false,
+          preflightCommitment: 'confirmed',
+        }
+      );
+
+      // Step 6: Confirm transaction
+      showSuccess('Transaction Sent', 'Confirming...');
+      const confirmation = await connection.confirmTransaction(
+        {
+          signature,
+          blockhash,
+          lastValidBlockHeight,
+        },
+        'confirmed'
+      );
+
+      if (confirmation.value.err) {
+        throw new Error('Transaction failed: ' + JSON.stringify(confirmation.value.err));
+      }
+
+      // Step 7: Confirm close in database (update status to CLOSED)
+      try {
+        const { api } = await import('../../services/api');
+        await api.confirmClosePosition(position.id, {
+          txSignature: signature,
+          realizedPnl: result.realizedPnl || 0,
+        });
+      } catch (e) {
+        console.warn('Failed to confirm close in database:', e);
+      }
+
+      // Step 8: Show success
+      showSuccess('Position Closed', `Realized P&L: ${formatUsd(result.realizedPnl || 0)}`);
+      onClose();
     } catch (error) {
+      console.error('Close position error:', error);
       showError('Error', error instanceof Error ? error.message : 'Failed to close position');
     }
   };

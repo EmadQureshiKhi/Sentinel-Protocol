@@ -253,7 +253,7 @@ export default function History() {
               gap: 0.5rem;
             `}
           >
-            {(['all', 'CONFIRMED', 'OPEN', 'PENDING', 'FAILED'] as StatusFilter[]).map((status) => (
+            {(['all', 'CONFIRMED', 'CLOSED', 'PENDING', 'FAILED'] as StatusFilter[]).map((status) => (
               <button
                 key={status}
                 onClick={() => setStatusFilter(status)}
@@ -349,7 +349,8 @@ export default function History() {
                           </div>
                         </td>
                         <td css={css`padding: 1rem 1.5rem; font-size: 0.875rem; color: #fff;`}>
-                          {tx.type === 'POSITION_OPEN' ? 'Position' : 'Swap'}
+                          {tx.type === 'POSITION_OPEN' ? 'Open Position' : 
+                           tx.type === 'POSITION_CLOSE' ? 'Close Position' : 'Swap'}
                         </td>
                         <td css={css`padding: 1rem 1.5rem; font-size: 0.875rem; color: #dcfd8f;`}>
                           {tx.protocol}
@@ -362,6 +363,15 @@ export default function History() {
                               <span css={css`color: #fff;`}>{tx.details.borrowToken}</span>
                               <div css={css`font-size: 0.75rem; color: #666; margin-top: 0.25rem;`}>
                                 {tx.details.leverage?.toFixed(1)}x leverage
+                              </div>
+                            </>
+                          ) : tx.type === 'POSITION_CLOSE' ? (
+                            <>
+                              <span css={css`color: #fff;`}>{tx.details.collateralToken}</span>
+                              <span css={css`color: #666; margin: 0 0.5rem;`}>→</span>
+                              <span css={css`color: #fff;`}>{tx.details.borrowToken}</span>
+                              <div css={css`font-size: 0.75rem; color: ${tx.details.realizedPnl >= 0 ? '#dcfd8f' : '#ff6464'}; margin-top: 0.25rem;`}>
+                                P/L: ${tx.details.realizedPnl?.toFixed(2) || '0.00'}
                               </div>
                             </>
                           ) : (
