@@ -240,6 +240,41 @@ router.post('/:id/close', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/positions/:id/confirm-close
+ * Confirm position was closed (update status to CLOSED)
+ */
+router.post('/:id/confirm-close', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { txSignature, realizedPnl } = req.body;
+
+    // Update position status to CLOSED
+    const position = await prisma.position.update({
+      where: { id },
+      data: {
+        status: 'CLOSED',
+        closedAt: new Date(),
+        closeTxSignature: txSignature || null,
+        unrealizedPnl: realizedPnl || 0, // Store realized P/L in unrealizedPnl field
+      },
+    });
+
+    logger.info('Position closed confirmed', { id, txSignature, realizedPnl });
+
+    res.json({
+      success: true,
+      position,
+    });
+  } catch (error) {
+    logger.error('Error confirming position close', { error });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to confirm position close',
+    });
+  }
+});
+
+/**
  * POST /api/positions/:id/adjust
  * Build transaction to adjust collateral
  */
@@ -398,12 +433,13 @@ router.get('/history/transactions', async (req: Request, res: Response) => {
 
     // Combine and format transactions
     const transactions = [
+      // Position opens
       ...positions.map(p => ({
         id: p.id,
         type: 'POSITION_OPEN' as const,
         timestamp: p.openedAt,
         protocol: p.protocol,
-        status: p.status === 'OPEN' ? 'CONFIRMED' : p.status,
+        status: 'CONFIRMED',
         txSignature: p.openTxSignature,
         details: {
           collateralToken: p.collateralToken,
@@ -413,6 +449,26 @@ router.get('/history/transactions', async (req: Request, res: Response) => {
           leverage: p.leverage,
         },
       })),
+      // Position closes (only for closed positions)
+      ...positions
+        .filter(p => p.status === 'CLOSED' && p.closedAt)
+        .map(p => ({
+          id: `${p.id}-close`,
+          type: 'POSITION_CLOSE' as const,
+          timestamp: p.closedAt!,
+          protocol: p.protocol,
+          status: 'CLOSED',
+          txSignature: p.closeTxSignature,
+          details: {
+            collateralToken: p.collateralToken,
+            collateralAmount: p.collateralAmount,
+            borrowToken: p.borrowToken,
+            borrowAmount: p.borrowAmount,
+            leverage: p.leverage,
+            realizedPnl: p.unrealizedPnl,
+          },
+        })),
+      // Protective swaps
       ...(account?.protectiveSwaps || []).map(s => ({
         id: s.id,
         type: 'PROTECTIVE_SWAP' as const,
@@ -428,7 +484,7 @@ router.get('/history/transactions', async (req: Request, res: Response) => {
           mevSaved: s.mevSaved,
         },
       })),
-    ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+    ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       .slice(0, parseInt(limit as string));
 
     res.json({

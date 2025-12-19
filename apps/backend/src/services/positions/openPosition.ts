@@ -355,8 +355,9 @@ export class PositionOpeningService {
    * Build transaction to close a position on Drift
    * 
    * Steps:
-   * 1. Repay borrowed tokens (deposit to reduce borrow)
-   * 2. Withdraw collateral
+   * 1. Fetch actual current borrow/collateral amounts from Drift (includes interest)
+   * 2. Repay borrowed tokens (deposit to reduce borrow)
+   * 3. Withdraw collateral
    */
   private async buildDriftCloseTx(
     walletAddress: string,
@@ -369,6 +370,8 @@ export class PositionOpeningService {
       walletAddress,
       collateralToken,
       borrowToken,
+      storedCollateral: collateralAmount,
+      storedBorrow: borrowAmount,
     });
 
     try {
@@ -390,11 +393,55 @@ export class PositionOpeningService {
         connection: this.connection,
         wallet: dummyWallet,
         env: this.network === 'mainnet-beta' ? 'mainnet-beta' : 'devnet',
+        spotMarketIndexes: [collateralMarketIndex, borrowMarketIndex, 0],
       });
 
       await driftClient.subscribe();
+      
+      // Wait for accounts to load
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       try {
+        // Add user to drift client
+        await driftClient.addUser(0, walletPubkey);
+        const user = driftClient.getUser(0, walletPubkey);
+        
+        // Fetch ACTUAL current amounts from Drift (includes accrued interest)
+        let actualBorrowAmount = borrowAmount;
+        let actualCollateralAmount = collateralAmount;
+        
+        try {
+          const spotPositions = user.getUserAccount().spotPositions;
+          
+          for (const pos of spotPositions) {
+            if (pos.marketIndex === borrowMarketIndex && pos.scaledBalance.toNumber() !== 0) {
+              // Get actual token amount (negative = borrow)
+              const tokenAmount = user.getTokenAmount(borrowMarketIndex);
+              if (tokenAmount.lt(new BN(0))) {
+                // It's a borrow - get absolute value
+                actualBorrowAmount = Math.abs(tokenAmount.toNumber()) / Math.pow(10, this.getTokenDecimals(borrowToken));
+                logger.info('Fetched actual borrow amount from Drift', {
+                  stored: borrowAmount,
+                  actual: actualBorrowAmount,
+                  difference: actualBorrowAmount - borrowAmount,
+                });
+              }
+            }
+            if (pos.marketIndex === collateralMarketIndex && pos.scaledBalance.toNumber() !== 0) {
+              const tokenAmount = user.getTokenAmount(collateralMarketIndex);
+              if (tokenAmount.gt(new BN(0))) {
+                actualCollateralAmount = tokenAmount.toNumber() / Math.pow(10, this.getTokenDecimals(collateralToken));
+                logger.info('Fetched actual collateral amount from Drift', {
+                  stored: collateralAmount,
+                  actual: actualCollateralAmount,
+                });
+              }
+            }
+          }
+        } catch (fetchError) {
+          logger.warn('Could not fetch actual amounts from Drift, using stored values', { fetchError });
+        }
+        
         const tx = new Transaction();
         tx.recentBlockhash = (await this.connection.getLatestBlockhash()).blockhash;
         tx.feePayer = walletPubkey;
@@ -403,32 +450,120 @@ export class PositionOpeningService {
         const borrowDecimals = this.getTokenDecimals(borrowToken);
         const collateralDecimals = this.getTokenDecimals(collateralToken);
 
-        // Convert amounts to native token precision
-        const borrowAmountBN = new BN(borrowAmount * Math.pow(10, borrowDecimals));
-        const collateralAmountBN = new BN(collateralAmount * Math.pow(10, collateralDecimals));
+        // Step 1: Repay the USDC borrow
+        // Get the user's USDC associated token account
+        const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
+        const userUsdcAta = await getAssociatedTokenAddress(
+          USDC_MINT,
+          walletPubkey
+        );
+        
+        // Check user's actual USDC balance
+        let userUsdcBalance = 0;
+        try {
+          const ataInfo = await this.connection.getTokenAccountBalance(userUsdcAta);
+          userUsdcBalance = parseFloat(ataInfo.value.amount) / Math.pow(10, borrowDecimals);
+          logger.info('User USDC balance', { balance: userUsdcBalance, ata: userUsdcAta.toString() });
+        } catch (e) {
+          logger.warn('Could not fetch USDC balance, assuming 0');
+        }
+        
+        // To close a position, we MUST fully repay the borrow first
+        // Otherwise Drift won't let us withdraw collateral (InsufficientCollateral error)
+        if (userUsdcBalance < actualBorrowAmount) {
+          const shortfall = actualBorrowAmount - userUsdcBalance;
+          logger.warn('Insufficient USDC to fully repay borrow', {
+            needed: actualBorrowAmount,
+            available: userUsdcBalance,
+            shortfall,
+          });
+          throw new Error(
+            `Cannot close position: You need ${actualBorrowAmount.toFixed(4)} USDC to repay your debt, ` +
+            `but only have ${userUsdcBalance.toFixed(4)} USDC. ` +
+            `Please acquire ${shortfall.toFixed(4)} more USDC (swap ~$${(shortfall * 1.01).toFixed(2)} worth of SOL on Jupiter).`
+          );
+        }
+        
+        // Repay the exact borrow amount (use floor to avoid rounding issues)
+        const borrowAmountBN = new BN(Math.floor(actualBorrowAmount * Math.pow(10, borrowDecimals)));
+        const collateralAmountBN = new BN(Math.floor(actualCollateralAmount * Math.pow(10, collateralDecimals)));
+        
+        logger.info('Repaying USDC borrow', {
+          storedAmount: borrowAmount,
+          actualBorrowOwed: actualBorrowAmount,
+          userBalance: userUsdcBalance,
+          amountToRepay: actualBorrowAmount,
+          marketIndex: borrowMarketIndex,
+          tokenAccount: userUsdcAta.toString(),
+        });
 
-        // Step 1: Repay borrowed tokens (deposit to repay borrow)
+        // Deposit USDC to repay the borrow (reduceOnly = true means it only reduces borrow)
         const repayIx = await driftClient.getDepositInstruction(
           borrowAmountBN,
-          borrowMarketIndex,
-          walletPubkey
+          borrowMarketIndex, // USDC market index (0)
+          userUsdcAta,
+          0, // subAccountId
+          true, // reduceOnly - only repay borrow, don't add as collateral
+          true // userInitialized
         );
         tx.add(repayIx);
 
-        // Step 2: Withdraw collateral
+        // Step 2: Withdraw SOL collateral
+        // For native SOL, we need to use the wSOL (Wrapped SOL) associated token account
+        // Native SOL mint address
+        const NATIVE_SOL_MINT = new PublicKey('So11111111111111111111111111111111111111112');
+        
+        // Get or create the user's wSOL ATA
+        const userWsolAta = await getAssociatedTokenAddress(
+          NATIVE_SOL_MINT,
+          walletPubkey
+        );
+        
+        // Check if wSOL ATA exists, if not we need to create it
+        const wsolAtaInfo = await this.connection.getAccountInfo(userWsolAta);
+        if (!wsolAtaInfo) {
+          logger.info('Creating wSOL ATA for withdrawal', { ata: userWsolAta.toString() });
+          const createWsolAtaIx = createAssociatedTokenAccountInstruction(
+            walletPubkey, // payer
+            userWsolAta, // ata
+            walletPubkey, // owner
+            NATIVE_SOL_MINT // mint
+          );
+          tx.add(createWsolAtaIx);
+        }
+        
+        logger.info('Withdrawing SOL collateral', {
+          amount: actualCollateralAmount,
+          marketIndex: collateralMarketIndex,
+          withdrawAccount: userWsolAta.toString(),
+        });
+
+        // Withdraw to wSOL ATA
         const withdrawIx = await driftClient.getWithdrawIx(
           collateralAmountBN,
-          collateralMarketIndex,
-          walletPubkey,
-          false // reduceOnly = false
+          collateralMarketIndex, // SOL market index (1)
+          userWsolAta, // Withdraw to wSOL ATA
+          false, // reduceOnly = false to allow full withdrawal
+          0 // subAccountId
         );
         tx.add(withdrawIx);
-
-        await driftClient.unsubscribe();
+        
+        // Close wSOL account to unwrap to native SOL
+        // This sends the SOL to the wallet and closes the wSOL ATA
+        const { createCloseAccountInstruction } = await import('@solana/spl-token');
+        const closeWsolIx = createCloseAccountInstruction(
+          userWsolAta, // account to close
+          walletPubkey, // destination for remaining SOL
+          walletPubkey  // owner/authority
+        );
+        tx.add(closeWsolIx);
 
         return tx.serialize({ requireAllSignatures: false }).toString('base64');
       } finally {
-        await driftClient.unsubscribe();
+        // CRITICAL: Always unsubscribe to prevent memory leaks
+        await driftClient.unsubscribe().catch((err) => {
+          logger.error('Error unsubscribing drift client in buildDriftCloseTx:', err);
+        });
       }
     } catch (error) {
       logger.error('Error building Drift close transaction', { error });
@@ -502,11 +637,12 @@ export class PositionOpeningService {
           tx.add(withdrawIx);
         }
 
-        await driftClient.unsubscribe();
-
         return tx.serialize({ requireAllSignatures: false }).toString('base64');
       } finally {
-        await driftClient.unsubscribe();
+        // CRITICAL: Always unsubscribe to prevent memory leaks
+        await driftClient.unsubscribe().catch((err) => {
+          logger.error('Error unsubscribing drift client in buildDriftAdjustCollateralTx:', err);
+        });
       }
     } catch (error) {
       logger.error('Error building Drift adjust collateral transaction', { error });
@@ -719,6 +855,8 @@ export class PositionOpeningService {
       let transaction: string;
       switch (position.protocol) {
         case 'DRIFT':
+          // For Drift, we need to fetch the actual current position from the protocol
+          // because the amounts might have changed due to interest/funding
           transaction = await this.buildDriftCloseTx(
             request.walletAddress,
             position.collateralToken,
@@ -750,15 +888,59 @@ export class PositionOpeningService {
           };
       }
 
-      // Calculate P&L
-      const currentValue = position.currentValue || position.collateralAmount * position.entryPrice;
-      const openValue = position.collateralAmount * position.entryPrice;
-      const realizedPnl = currentValue - openValue;
+      // Calculate P&L properly
+      // For a leveraged position:
+      // - You deposited X SOL as collateral
+      // - You borrowed Y USDC
+      // - Now you're returning the SOL and repaying the USDC (with interest)
+      // P/L = (Current SOL value - Entry SOL value) - (Interest paid on borrow)
+      
+      const quoteService = getQuoteService(this.network);
+      let currentCollateralPrice = position.entryPrice;
+      
+      try {
+        const priceData = await quoteService.getTokenPrice(position.collateralToken);
+        currentCollateralPrice = priceData.price;
+      } catch (e) {
+        logger.warn('Could not fetch current price, using entry price for P/L calculation');
+      }
+      
+      // Entry value: what the collateral was worth when position opened
+      const entryCollateralValue = position.collateralAmount * position.entryPrice;
+      
+      // Current value: what the collateral is worth now
+      const currentCollateralValue = position.collateralAmount * currentCollateralPrice;
+      
+      // Price change P/L (before interest)
+      const priceChangePnl = currentCollateralValue - entryCollateralValue;
+      
+      // Interest cost (approximate - actual interest is tracked by Drift)
+      // For now, estimate based on position duration and typical borrow rate (~10% APY)
+      const positionDurationHours = (Date.now() - new Date(position.openedAt).getTime()) / (1000 * 60 * 60);
+      const annualRate = 0.10; // 10% APY estimate
+      const interestCost = position.borrowAmount * (annualRate * positionDurationHours / 8760);
+      
+      // Realized P/L = price change - interest cost
+      const realizedPnl = priceChangePnl - interestCost;
+      
+      // Estimated return = collateral value - remaining debt (should be ~0 after full repay)
+      const estimatedReturn = currentCollateralValue;
+      
+      logger.info('P/L calculation', {
+        entryPrice: position.entryPrice,
+        currentPrice: currentCollateralPrice,
+        entryValue: entryCollateralValue,
+        currentValue: currentCollateralValue,
+        priceChangePnl,
+        interestCost,
+        realizedPnl,
+        positionDurationHours,
+      });
 
       return {
         success: true,
         transaction,
-        estimatedReturn: currentValue,
+        estimatedReturn,
         realizedPnl,
       };
     } catch (error) {
