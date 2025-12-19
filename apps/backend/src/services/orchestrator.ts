@@ -43,15 +43,16 @@ export class Orchestrator extends EventEmitter {
   private swapExecutor: ProtectedSwapExecutor;
 
   private monitoringInterval: NodeJS.Timeout | null = null;
-  private isRunning: boolean = false;
+  private _isRunning: boolean = false;
   private config: OrchestratorConfig;
   private currentHvix: number = 0;
+  private sharedDriftClient: any = null; // Shared Drift client to avoid subscription overload
 
   constructor(config: OrchestratorConfig = {}) {
     super();
     
     this.config = {
-      monitoringIntervalMs: config.monitoringIntervalMs || TIMING.MONITORING_INTERVAL_MS,
+      monitoringIntervalMs: config.monitoringIntervalMs || 30000, // Changed from 10s to 30s
       enableAutoProtection: config.enableAutoProtection || false,
       autoProtectionThreshold: config.autoProtectionThreshold || 80,
     };
@@ -93,10 +94,47 @@ export class Orchestrator extends EventEmitter {
   }
 
   /**
+   * Initialize shared Drift client to avoid subscription overload
+   */
+  private async initializeSharedDriftClient(): Promise<void> {
+    try {
+      const DriftSDK = await import('@drift-labs/sdk');
+      const { Connection, PublicKey, Keypair } = await import('@solana/web3.js');
+
+      // Create connection
+      const connection = new Connection(
+        process.env.MAINNET_RPC_URL || process.env.HELIUS_RPC_URL || 'https://api.mainnet-beta.solana.com',
+        'confirmed'
+      );
+
+      // Create dummy wallet for reading account data
+      const dummyKeypair = Keypair.generate();
+      const dummyWallet = {
+        publicKey: dummyKeypair.publicKey,
+        signTransaction: async (tx: any) => tx,
+        signAllTransactions: async (txs: any[]) => txs,
+      };
+
+      // Initialize Drift client
+      this.sharedDriftClient = new DriftSDK.DriftClient({
+        connection,
+        wallet: dummyWallet,
+        env: 'mainnet-beta',
+      });
+
+      await this.sharedDriftClient.subscribe();
+      logger.info('✅ Shared Drift client initialized');
+    } catch (error) {
+      logger.error('Failed to initialize shared Drift client:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Start the orchestrator
    */
   async start(): Promise<void> {
-    if (this.isRunning) {
+    if (this._isRunning) {
       logger.warn('Orchestrator is already running');
       return;
     }
@@ -106,6 +144,9 @@ export class Orchestrator extends EventEmitter {
     try {
       // Connect to database
       await this.database.connect();
+
+      // Initialize shared Drift client
+      await this.initializeSharedDriftClient();
 
       // Initialize Geyser monitor
       await this.geyserMonitor.initialize();
@@ -119,7 +160,7 @@ export class Orchestrator extends EventEmitter {
       // Start monitoring loop
       this.startMonitoringLoop();
 
-      this.isRunning = true;
+      this._isRunning = true;
       this.emit('started');
       
       logger.info('Orchestrator started successfully');
@@ -135,12 +176,23 @@ export class Orchestrator extends EventEmitter {
   async shutdown(): Promise<void> {
     logger.info('Shutting down Orchestrator...');
 
-    this.isRunning = false;
+    this._isRunning = false;
 
     // Stop monitoring loop
     if (this.monitoringInterval) {
       clearInterval(this.monitoringInterval);
       this.monitoringInterval = null;
+    }
+
+    // Cleanup shared Drift client
+    if (this.sharedDriftClient) {
+      try {
+        await this.sharedDriftClient.unsubscribe();
+        logger.info('Shared Drift client unsubscribed');
+      } catch (error) {
+        logger.error('Error unsubscribing shared Drift client:', error);
+      }
+      this.sharedDriftClient = null;
     }
 
     // Stop services
@@ -183,7 +235,7 @@ export class Orchestrator extends EventEmitter {
    * Run a single monitoring cycle
    */
   private async runMonitoringCycle(): Promise<void> {
-    if (!this.isRunning) return;
+    if (!this._isRunning) return;
 
     try {
       const startTime = Date.now();
@@ -211,11 +263,46 @@ export class Orchestrator extends EventEmitter {
       for (const account of accounts) {
         let riskData: AccountRiskData;
         
-        // Try to fetch fresh data from Drift
-        try {
-          const positionData = await this.healthCalculator.parseDriftAccountData(account.walletAddress);
+        // Demo account with simulated high-risk position
+        const DEMO_WALLET = 'DYw8jCTfwHNRJhhmFcbXvVDTqWMEVFBX6ZKUmG5CNSKK';
+        
+        if (account.walletAddress === DEMO_WALLET) {
+          // Create demo data showing a risky position
+          const currentTime = Date.now();
+          const cycleNumber = Math.floor(currentTime / 30000); // Changes every 30s
           
-          if (positionData) {
+          // Simulate oscillating between CRITICAL and HIGH risk to trigger alerts
+          // Health factor 1.05-1.25 = Risk score 32-40 (critical/danger zone)
+          const baseHealth = 1.15;
+          const healthVariation = Math.sin(cycleNumber * 0.2) * 0.10; // Oscillate between 1.05 and 1.25
+          const demoHealthFactor = Math.max(1.05, Math.min(1.25, baseHealth + healthVariation));
+          
+          riskData = {
+            walletAddress: account.walletAddress,
+            healthFactor: demoHealthFactor,
+            collateralValue: 125.8, // $125.8 in SOL
+            borrowedValue: 98.5, // $98.5 in USDC (high debt!)
+            leverage: 8.5, // 8.5x leverage (very risky!)
+            liquidationPrice: 128.2, // Very close to current price (~$130)
+            oraclePrice: solPrice?.price || 130,
+          };
+          
+          logger.info('🎭 Demo account data generated', {
+            wallet: DEMO_WALLET,
+            healthFactor: demoHealthFactor.toFixed(3),
+            riskLevel: demoHealthFactor < 1.1 ? 'CRITICAL' : demoHealthFactor < 1.3 ? 'HIGH' : 'MODERATE',
+            leverage: '8.5x',
+            collateral: '$125.8',
+            debt: '$98.5',
+          });
+        } else {
+          // Try to fetch fresh data from Drift using shared client
+          try {
+            const positionData = this.sharedDriftClient 
+              ? await this.healthCalculator.parseDriftAccountDataWithClient(account.walletAddress, this.sharedDriftClient)
+              : await this.healthCalculator.parseDriftAccountData(account.walletAddress);
+            
+            if (positionData) {
             const healthMetrics = this.healthCalculator.calculateHealthMetrics(positionData);
             
             logger.debug('Health metrics calculated', {
@@ -264,6 +351,7 @@ export class Orchestrator extends EventEmitter {
             liquidationPrice: latestSnapshot.liquidationPrice,
             oraclePrice: solPrice?.price || 0,
           };
+          }
         }
 
         riskDataList.push(riskData);
@@ -475,7 +563,7 @@ export class Orchestrator extends EventEmitter {
     const accountCount = await this.database.getActiveAccountCount();
 
     return {
-      isRunning: this.isRunning,
+      isRunning: this._isRunning,
       lastUpdate: new Date(),
       accountsMonitored: accountCount,
       activeAlerts,
@@ -498,6 +586,13 @@ export class Orchestrator extends EventEmitter {
       alertSystem: this.alertSystem,
       swapExecutor: this.swapExecutor,
     };
+  }
+
+  /**
+   * Check if orchestrator is running
+   */
+  isRunning(): boolean {
+    return this._isRunning;
   }
 }
 

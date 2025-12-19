@@ -21,6 +21,7 @@ import healthRouter from './api/routes/health';
 import ratesRouter from './api/routes/rates';
 import positionsRouter from './api/routes/positions';
 import portfolioRouter from './api/routes/portfolio';
+import privacyRouter from './api/routes/privacy';
 
 // Import middleware
 import { errorHandler, notFoundHandler } from './api/middleware/errorHandler';
@@ -71,6 +72,7 @@ app.use('/api/health', healthRouter);
 app.use('/api/rates', ratesRouter);
 app.use('/api/positions', positionsRouter);
 app.use('/api/portfolio', portfolioRouter);
+app.use('/api/privacy', privacyRouter);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -80,6 +82,115 @@ app.get('/', (req, res) => {
     network: config.network,
     timestamp: new Date().toISOString(),
   });
+});
+
+// Orchestrator control state
+let orchestratorStartedAt: Date | null = null;
+let orchestratorAutoShutdownTimer: NodeJS.Timeout | null = null;
+const ORCHESTRATOR_AUTO_SHUTDOWN_MS = 60 * 60 * 1000; // 1 hour
+
+// Server status endpoint (for frontend to check if backend is running)
+app.get('/api/server/status', (req, res) => {
+  const uptime = process.uptime();
+  const orchestratorRunning = orchestrator?.isRunning() || false;
+  const orchestratorUptime = orchestratorStartedAt 
+    ? Math.floor((Date.now() - orchestratorStartedAt.getTime()) / 1000)
+    : 0;
+  const orchestratorRemainingMs = orchestratorStartedAt && orchestratorAutoShutdownTimer
+    ? Math.max(0, ORCHESTRATOR_AUTO_SHUTDOWN_MS - (Date.now() - orchestratorStartedAt.getTime()))
+    : null;
+  
+  res.json({
+    success: true,
+    data: {
+      status: 'running',
+      uptime: Math.floor(uptime),
+      uptimeFormatted: `${Math.floor(uptime / 60)}m ${Math.floor(uptime % 60)}s`,
+      orchestrator: {
+        running: orchestratorRunning,
+        startedAt: orchestratorStartedAt?.toISOString() || null,
+        uptime: orchestratorUptime,
+        uptimeFormatted: orchestratorRunning ? `${Math.floor(orchestratorUptime / 60)}m ${Math.floor(orchestratorUptime % 60)}s` : null,
+        autoShutdown: {
+          enabled: true,
+          totalMs: ORCHESTRATOR_AUTO_SHUTDOWN_MS,
+          remainingMs: orchestratorRemainingMs,
+          remainingFormatted: orchestratorRemainingMs 
+            ? `${Math.floor(orchestratorRemainingMs / 60000)}m ${Math.floor((orchestratorRemainingMs % 60000) / 1000)}s` 
+            : null,
+        },
+      },
+      startedAt: new Date(Date.now() - uptime * 1000).toISOString(),
+    },
+  });
+});
+
+// Start orchestrator endpoint
+app.post('/api/server/orchestrator/start', async (req, res) => {
+  try {
+    if (!orchestrator) {
+      return res.status(500).json({ success: false, error: 'Orchestrator not initialized' });
+    }
+
+    if (orchestrator.isRunning()) {
+      return res.json({ success: true, message: 'Orchestrator already running' });
+    }
+
+    await orchestrator.start();
+    orchestratorStartedAt = new Date();
+
+    // Set auto-shutdown timer (1 hour)
+    if (orchestratorAutoShutdownTimer) {
+      clearTimeout(orchestratorAutoShutdownTimer);
+    }
+    orchestratorAutoShutdownTimer = setTimeout(async () => {
+      logger.info('⏰ Orchestrator auto-shutdown: 1 hour reached');
+      if (orchestrator?.isRunning()) {
+        await orchestrator.shutdown();
+        orchestratorStartedAt = null;
+        orchestratorAutoShutdownTimer = null;
+      }
+    }, ORCHESTRATOR_AUTO_SHUTDOWN_MS);
+
+    logger.info('🚀 Orchestrator started via API (auto-shutdown in 1 hour)');
+    
+    res.json({ 
+      success: true, 
+      message: 'Orchestrator started',
+      autoShutdownIn: '1 hour',
+    });
+  } catch (error) {
+    logger.error('Failed to start orchestrator:', error);
+    res.status(500).json({ success: false, error: 'Failed to start orchestrator' });
+  }
+});
+
+// Stop orchestrator endpoint
+app.post('/api/server/orchestrator/stop', async (req, res) => {
+  try {
+    if (!orchestrator) {
+      return res.status(500).json({ success: false, error: 'Orchestrator not initialized' });
+    }
+
+    if (!orchestrator.isRunning()) {
+      return res.json({ success: true, message: 'Orchestrator already stopped' });
+    }
+
+    await orchestrator.shutdown();
+    orchestratorStartedAt = null;
+    
+    if (orchestratorAutoShutdownTimer) {
+      clearTimeout(orchestratorAutoShutdownTimer);
+      orchestratorAutoShutdownTimer = null;
+    }
+
+    logger.info('🛑 Orchestrator stopped via API');
+    
+    res.json({ success: true, message: 'Orchestrator stopped' });
+  } catch (error) {
+    logger.error('Failed to stop orchestrator:', error);
+    res.status(500).json({ success: false, error: 'Failed to stop orchestrator' });
+  }
 });
 
 // API info endpoint
@@ -96,6 +207,7 @@ app.get('/api', (req, res) => {
       rates: '/api/rates',
       positions: '/api/positions',
       portfolio: '/api/portfolio',
+      privacy: '/api/privacy',
     },
     websocket: {
       events: [
@@ -170,6 +282,16 @@ async function main() {
       logger.info(`   Health: http://localhost:${config.port}/api/health`);
       logger.info(`   WebSocket: ws://localhost:${config.port}`);
     });
+
+    // Auto-shutdown timer (1 hour) to save Railway credits
+    const AUTO_SHUTDOWN_MS = parseInt(process.env.AUTO_SHUTDOWN_MS || '3600000'); // Default 1 hour
+    if (process.env.ENABLE_AUTO_SHUTDOWN === 'true') {
+      logger.info(`⏰ Auto-shutdown enabled: Server will shutdown in ${AUTO_SHUTDOWN_MS / 60000} minutes`);
+      setTimeout(() => {
+        logger.info('⏰ Auto-shutdown timer reached. Shutting down to save credits...');
+        shutdown('AUTO_SHUTDOWN');
+      }, AUTO_SHUTDOWN_MS);
+    }
 
     // Graceful shutdown
     const shutdown = async (signal: string) => {
