@@ -1,0 +1,8 @@
+[package]
+name = "encrypted-ixs"
+version = "0.1.0"
+description = "Sentinel Protocol encrypted instruction circuits for Arcium MXE"
+edition = "2025"
+
+[dependencies]
+arcis-imports = { version = "0.3.0" }
