@@ -1,0 +1,23 @@
+[package]
+name = "sentinel-mpc"
+version = "0.1.0"
+description = "Sentinel Protocol MPC - Privacy-preserving liquidation protection on Solana"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "sentinel_mpc"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+
+[dependencies]
+anchor-lang = { version = "0.31.1", features = ["init-if-needed"] }
+
+arcium-client = { version = "0.3.0", default-features = false }
+arcium-macros = { version = "0.3.0" }
+arcium-anchor = { version = "0.3.0" }
