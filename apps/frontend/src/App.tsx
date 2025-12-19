@@ -7,6 +7,7 @@ import Settings from './pages/Settings';
 import Rates from './pages/Rates';
 import OpenPosition from './pages/OpenPosition';
 import Portfolio from './pages/Portfolio';
+import Privacy from './pages/Privacy';
 
 function App() {
   const navigate = useNavigate();
@@ -26,6 +27,7 @@ function App() {
         <Route path="rates" element={<Rates />} />
         <Route path="open-position" element={<OpenPosition />} />
         <Route path="portfolio" element={<Portfolio />} />
+        <Route path="privacy" element={<Privacy />} />
         <Route path="settings" element={<Settings />} />
       </Routes>
     </AppLayout>
