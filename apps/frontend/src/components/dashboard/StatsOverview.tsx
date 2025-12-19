@@ -15,11 +15,10 @@ function StatCard({ title, value, subtitle, icon, accentColor = '#dcfd8f' }: Sta
   return (
     <div
       css={css`
-        background: rgba(12, 13, 16, 0.6);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: var(--bg-surface);
+        border: 1px solid var(--border-default);
         border-radius: 16px;
         padding: 1.5rem;
-        backdrop-filter: blur(20px);
         transition: all 0.2s;
 
         &:hover {
@@ -98,10 +97,9 @@ export function StatsOverview() {
             key={i}
             css={css`
               background: rgba(12, 13, 16, 0.6);
-              border: 1px solid rgba(255, 255, 255, 0.1);
+              border: 1px solid var(--border-default);
               border-radius: 16px;
               padding: 1.5rem;
-              backdrop-filter: blur(20px);
               animation: pulse 2s infinite;
 
               @keyframes pulse {
@@ -143,7 +141,7 @@ export function StatsOverview() {
       <StatCard
         title="At Risk"
         value={atRisk}
-        subtitle="Risk score ≥ 60"
+        subtitle="Risk score ≥ 30"
         icon={<Warning size={32} weight="fill" />}
         accentColor={atRisk > 0 ? '#ff6464' : '#dcfd8f'}
       />

@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { css } from '@emotion/react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Warning, CheckCircle, XCircle, CaretRight } from '@phosphor-icons/react';
+import { Bell, Warning, CheckCircle, XCircle, CaretRight, Trash } from '@phosphor-icons/react';
 import { useActiveAlerts, useAcknowledgeAlert, useResolveAlert } from '../../hooks/useAlerts';
 import { Alert } from '../../services/api';
 import { useState } from 'react';
@@ -210,14 +210,24 @@ export function AlertFeed() {
         isOpen={!!selectedAlert}
         onClose={() => setSelectedAlert(null)}
         title="Alert Details"
+        size="lg"
       >
         {selectedAlert && (
-          <div css={css`display: flex; flex-direction: column; gap: 1.25rem;`}>
+          <div css={css`
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+          `}>
             {/* Severity Badge */}
             <div css={css`
               display: flex;
               align-items: center;
               gap: 0.75rem;
+              padding: 1rem;
+              background: #111111;
+              border: 1px solid ${getSeverityColor(selectedAlert.riskScore)}40;
+              border-left: 3px solid ${getSeverityColor(selectedAlert.riskScore)};
+              border-radius: 10px;
             `}>
               <div css={css`
                 width: 40px;
@@ -232,7 +242,7 @@ export function AlertFeed() {
               `}>
                 {getSeverityIcon(selectedAlert.riskScore)}
               </div>
-              <div>
+              <div css={css`flex: 1;`}>
                 <span css={css`
                   display: inline-block;
                   padding: 0.25rem 0.625rem;
@@ -248,7 +258,7 @@ export function AlertFeed() {
                 </span>
                 <div css={css`
                   font-size: 0.75rem;
-                  color: #666;
+                  color: #888888;
                   margin-top: 0.25rem;
                 `}>
                   {new Date(selectedAlert.createdAt).toLocaleString()}
@@ -258,17 +268,25 @@ export function AlertFeed() {
 
             {/* Wallet */}
             <div css={css`
-              padding: 0.75rem 1rem;
-              background: rgba(255, 255, 255, 0.03);
-              border-radius: 8px;
+              padding: 0.875rem 1rem;
+              background: #111111;
+              border: 1px solid rgba(255, 255, 255, 0.1);
+              border-radius: 10px;
             `}>
-              <div css={css`font-size: 0.6875rem; color: #666; margin-bottom: 0.25rem;`}>
+              <div css={css`
+                font-size: 0.6875rem;
+                color: #888888;
+                margin-bottom: 0.375rem;
+                font-weight: 600;
+              `}>
                 Wallet Address
               </div>
               <div css={css`
                 font-family: 'SF Mono', 'Fira Code', monospace;
-                font-size: 0.8125rem;
+                font-size: 0.75rem;
                 color: #dcfd8f;
+                word-break: break-all;
+                line-height: 1.4;
               `}>
                 {selectedAlert.account?.walletAddress}
               </div>
@@ -278,18 +296,24 @@ export function AlertFeed() {
             <div css={css`
               display: grid;
               grid-template-columns: repeat(2, 1fr);
-              gap: 0.75rem;
+              gap: 0.625rem;
             `}>
               <div css={css`
-                padding: 0.75rem;
-                background: rgba(255, 255, 255, 0.03);
-                border-radius: 8px;
+                padding: 0.875rem;
+                background: #111111;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 10px;
               `}>
-                <div css={css`font-size: 0.6875rem; color: #666; margin-bottom: 0.25rem;`}>
+                <div css={css`
+                  font-size: 0.6875rem;
+                  color: #888888;
+                  margin-bottom: 0.375rem;
+                  font-weight: 600;
+                `}>
                   Risk Score
                 </div>
                 <div css={css`
-                  font-size: 1.125rem;
+                  font-size: 1.25rem;
                   font-weight: 700;
                   color: ${getSeverityColor(selectedAlert.riskScore)};
                 `}>
@@ -298,40 +322,58 @@ export function AlertFeed() {
               </div>
               
               <div css={css`
-                padding: 0.75rem;
-                background: rgba(255, 255, 255, 0.03);
-                border-radius: 8px;
+                padding: 0.875rem;
+                background: #111111;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 10px;
               `}>
-                <div css={css`font-size: 0.6875rem; color: #666; margin-bottom: 0.25rem;`}>
+                <div css={css`
+                  font-size: 0.6875rem;
+                  color: #888888;
+                  margin-bottom: 0.375rem;
+                  font-weight: 600;
+                `}>
                   Time to Liquidation
                 </div>
-                <div css={css`font-size: 1.125rem; font-weight: 700; color: #fff;`}>
+                <div css={css`font-size: 1.25rem; font-weight: 700; color: #fff;`}>
                   {selectedAlert.timeToLiquidation}h
                 </div>
               </div>
               
               <div css={css`
-                padding: 0.75rem;
-                background: rgba(255, 255, 255, 0.03);
-                border-radius: 8px;
+                padding: 0.875rem;
+                background: #111111;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 10px;
               `}>
-                <div css={css`font-size: 0.6875rem; color: #666; margin-bottom: 0.25rem;`}>
+                <div css={css`
+                  font-size: 0.6875rem;
+                  color: #888888;
+                  margin-bottom: 0.375rem;
+                  font-weight: 600;
+                `}>
                   Cascade Probability
                 </div>
-                <div css={css`font-size: 1.125rem; font-weight: 700; color: #fff;`}>
+                <div css={css`font-size: 1.25rem; font-weight: 700; color: #fff;`}>
                   {(selectedAlert.cascadeProbability * 100).toFixed(1)}%
                 </div>
               </div>
               
               <div css={css`
-                padding: 0.75rem;
-                background: rgba(255, 255, 255, 0.03);
-                border-radius: 8px;
+                padding: 0.875rem;
+                background: #111111;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 10px;
               `}>
-                <div css={css`font-size: 0.6875rem; color: #666; margin-bottom: 0.25rem;`}>
+                <div css={css`
+                  font-size: 0.6875rem;
+                  color: #888888;
+                  margin-bottom: 0.375rem;
+                  font-weight: 600;
+                `}>
                   Estimated Losses
                 </div>
-                <div css={css`font-size: 1.125rem; font-weight: 700; color: #ff6464;`}>
+                <div css={css`font-size: 1.25rem; font-weight: 700; color: #ff6464;`}>
                   ${selectedAlert.estimatedLosses.toFixed(2)}
                 </div>
               </div>
@@ -340,40 +382,51 @@ export function AlertFeed() {
             {/* Recommended Action */}
             <div css={css`
               padding: 1rem;
-              background: rgba(220, 253, 143, 0.05);
-              border: 1px solid rgba(220, 253, 143, 0.2);
+              background: rgba(220, 253, 143, 0.08);
+              border: 1px solid rgba(220, 253, 143, 0.25);
+              border-left: 3px solid #dcfd8f;
               border-radius: 10px;
             `}>
-              <div css={css`font-size: 0.6875rem; color: #dcfd8f; margin-bottom: 0.375rem; font-weight: 600;`}>
+              <div css={css`
+                font-size: 0.6875rem;
+                color: #dcfd8f;
+                margin-bottom: 0.375rem;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+              `}>
                 Recommended Action
               </div>
-              <div css={css`font-size: 0.875rem; color: #fff;`}>
+              <div css={css`font-size: 0.875rem; color: #fff; font-weight: 500;`}>
                 {selectedAlert.recommendedAction}
               </div>
             </div>
 
             {/* Action Buttons */}
-            <div css={css`display: flex; gap: 0.75rem;`}>
+            <div css={css`
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 0.625rem;
+            `}>
               <button
                 onClick={() => {
                   navigate(`/account/${selectedAlert.account?.walletAddress}`);
                   setSelectedAlert(null);
                 }}
                 css={css`
-                  flex: 1;
                   padding: 0.875rem;
-                  background: rgba(255, 255, 255, 0.03);
-                  border: 1px solid rgba(255, 255, 255, 0.1);
+                  background: #111111;
+                  border: 1px solid rgba(255, 255, 255, 0.15);
                   border-radius: 10px;
-                  color: #a0a0a0;
+                  color: #ffffff;
                   font-weight: 600;
                   font-size: 0.8125rem;
                   cursor: pointer;
                   transition: all 0.2s;
 
                   &:hover {
-                    background: rgba(255, 255, 255, 0.06);
-                    color: #fff;
+                    background: #1a1a1a;
+                    border-color: rgba(255, 255, 255, 0.25);
                   }
                 `}
               >
@@ -388,19 +441,19 @@ export function AlertFeed() {
                   }}
                   disabled={acknowledgeMutation.isPending}
                   css={css`
-                    flex: 1;
                     padding: 0.875rem;
-                    background: rgba(255, 165, 0, 0.15);
-                    border: 1px solid rgba(255, 165, 0, 0.3);
+                    background: #111111;
+                    border: 1px solid rgba(255, 255, 255, 0.15);
                     border-radius: 10px;
-                    color: #ffa500;
+                    color: #dcfd8f;
                     font-weight: 600;
                     font-size: 0.8125rem;
                     cursor: pointer;
                     transition: all 0.2s;
 
                     &:hover:not(:disabled) {
-                      background: rgba(255, 165, 0, 0.25);
+                      background: #1a1a1a;
+                      border-color: rgba(220, 253, 143, 0.3);
                     }
                     &:disabled {
                       opacity: 0.5;
@@ -408,7 +461,7 @@ export function AlertFeed() {
                     }
                   `}
                 >
-                  Acknowledge
+                  {acknowledgeMutation.isPending ? 'Acknowledging...' : 'Acknowledge'}
                 </button>
               )}
               
@@ -419,20 +472,19 @@ export function AlertFeed() {
                 }}
                 disabled={resolveMutation.isPending}
                 css={css`
-                  flex: 1;
                   padding: 0.875rem;
-                  background: linear-gradient(135deg, #dcfd8f 0%, #b8e063 100%);
-                  color: #0a0e27;
-                  border: none;
+                  background: #111111;
+                  border: 1px solid rgba(255, 255, 255, 0.15);
                   border-radius: 10px;
+                  color: #4ade80;
                   font-weight: 600;
                   font-size: 0.8125rem;
                   cursor: pointer;
                   transition: all 0.2s;
 
                   &:hover:not(:disabled) {
-                    transform: translateY(-1px);
-                    box-shadow: 0 8px 24px rgba(220, 253, 143, 0.3);
+                    background: #1a1a1a;
+                    border-color: rgba(74, 222, 128, 0.3);
                   }
                   &:disabled {
                     opacity: 0.5;
@@ -440,7 +492,42 @@ export function AlertFeed() {
                   }
                 `}
               >
-                Resolve
+                {resolveMutation.isPending ? 'Resolving...' : 'Resolve'}
+              </button>
+              
+              <button
+                onClick={(e) => {
+                  handleResolve(selectedAlert.id, e);
+                  setSelectedAlert(null);
+                }}
+                disabled={resolveMutation.isPending}
+                css={css`
+                  padding: 0.875rem;
+                  background: #111111;
+                  border: 1px solid rgba(255, 255, 255, 0.15);
+                  border-radius: 10px;
+                  color: #ff6464;
+                  font-weight: 600;
+                  font-size: 0.8125rem;
+                  cursor: pointer;
+                  transition: all 0.2s;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  gap: 0.5rem;
+
+                  &:hover:not(:disabled) {
+                    background: #1a1a1a;
+                    border-color: rgba(255, 100, 100, 0.3);
+                  }
+                  &:disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                  }
+                `}
+              >
+                <Trash size={16} />
+                {resolveMutation.isPending ? 'Deleting...' : 'Delete'}
               </button>
             </div>
           </div>

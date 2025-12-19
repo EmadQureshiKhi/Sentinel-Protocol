@@ -135,24 +135,28 @@ export default function Dashboard() {
                 display: flex;
                 align-items: center;
                 gap: 0.5rem;
-                padding: 0.625rem 1.25rem;
+                padding: 0.75rem 1.5rem;
                 background: linear-gradient(135deg, #dcfd8f 0%, #b8e063 100%);
-                color: #0a0e27;
+                color: var(--bg-body);
                 border: none;
                 border-radius: 10px;
-                font-weight: 600;
+                font-weight: 700;
                 font-size: 0.875rem;
                 cursor: pointer;
                 transition: all 0.2s;
-                box-shadow: 0 4px 12px rgba(220, 253, 143, 0.2);
+                box-shadow: 0 4px 12px rgba(220, 253, 143, 0.25);
 
                 &:hover {
                   transform: translateY(-2px);
-                  box-shadow: 0 8px 24px rgba(220, 253, 143, 0.3);
+                  box-shadow: 0 8px 24px rgba(220, 253, 143, 0.4);
+                }
+                
+                &:active {
+                  transform: translateY(0);
                 }
               `}
             >
-              <Plus size={18} weight="bold" />
+              <Plus size={20} weight="bold" />
               Add Account
             </button>
           </div>
@@ -473,11 +477,10 @@ export default function Dashboard() {
             
             {/* Quick Actions */}
             <div css={css`
-              background: rgba(12, 13, 16, 0.6);
-              border: 1px solid rgba(255, 255, 255, 0.08);
+              background: var(--bg-surface);
+              border: 1px solid var(--border-default);
               border-radius: 16px;
               padding: 1.25rem;
-              backdrop-filter: blur(20px);
             `}>
               <h3 css={css`
                 font-size: 0.875rem;
@@ -551,11 +554,10 @@ export default function Dashboard() {
 
             {/* Alert Feed */}
             <div css={css`
-              background: rgba(12, 13, 16, 0.6);
-              border: 1px solid rgba(255, 255, 255, 0.08);
+              background: var(--bg-surface);
+              border: 1px solid var(--border-default);
               border-radius: 16px;
               padding: 1.25rem;
-              backdrop-filter: blur(20px);
               flex: 1;
             `}>
               <h3 css={css`
@@ -671,16 +673,17 @@ export default function Dashboard() {
               css={css`
                 flex: 1;
                 padding: 0.875rem;
-                background: rgba(255, 255, 255, 0.03);
-                border: 1px solid rgba(255, 255, 255, 0.1);
+                background: var(--bg-header);
+                border: 1px solid var(--border-default);
                 border-radius: 10px;
-                color: #a0a0a0;
+                color: var(--text-secondary);
                 font-weight: 600;
                 cursor: pointer;
                 transition: all 0.2s;
 
                 &:hover {
-                  background: rgba(255, 255, 255, 0.06);
+                  background: var(--bg-surface-hover);
+                  border-color: var(--clr-primary-border);
                   color: #fff;
                 }
               `}
@@ -694,21 +697,23 @@ export default function Dashboard() {
                 flex: 1;
                 padding: 0.875rem;
                 background: linear-gradient(135deg, #dcfd8f 0%, #b8e063 100%);
-                color: #0a0e27;
+                color: var(--bg-body);
                 border: none;
                 border-radius: 10px;
-                font-weight: 600;
+                font-weight: 700;
                 cursor: pointer;
                 transition: all 0.2s;
+                box-shadow: 0 4px 12px rgba(220, 253, 143, 0.2);
 
                 &:hover:not(:disabled) {
-                  transform: translateY(-1px);
-                  box-shadow: 0 8px 24px rgba(220, 253, 143, 0.3);
+                  transform: translateY(-2px);
+                  box-shadow: 0 8px 24px rgba(220, 253, 143, 0.35);
                 }
 
                 &:disabled {
                   opacity: 0.5;
                   cursor: not-allowed;
+                  transform: none;
                 }
               `}
             >
@@ -746,16 +751,17 @@ export default function Dashboard() {
               css={css`
                 flex: 1;
                 padding: 0.875rem;
-                background: rgba(255, 255, 255, 0.03);
-                border: 1px solid rgba(255, 255, 255, 0.1);
+                background: var(--bg-header);
+                border: 1px solid var(--border-default);
                 border-radius: 10px;
-                color: #a0a0a0;
+                color: var(--text-secondary);
                 font-weight: 600;
                 cursor: pointer;
                 transition: all 0.2s;
 
                 &:hover {
-                  background: rgba(255, 255, 255, 0.06);
+                  background: var(--bg-surface-hover);
+                  border-color: var(--clr-primary-border);
                   color: #fff;
                 }
               `}
@@ -768,16 +774,17 @@ export default function Dashboard() {
               css={css`
                 flex: 1;
                 padding: 0.875rem;
-                background: rgba(255, 100, 100, 0.15);
+                background: rgba(255, 100, 100, 0.1);
                 border: 1px solid rgba(255, 100, 100, 0.3);
                 border-radius: 10px;
                 color: #ff6464;
-                font-weight: 600;
+                font-weight: 700;
                 cursor: pointer;
                 transition: all 0.2s;
 
                 &:hover:not(:disabled) {
-                  background: rgba(255, 100, 100, 0.25);
+                  background: rgba(255, 100, 100, 0.2);
+                  border-color: rgba(255, 100, 100, 0.4);
                 }
 
                 &:disabled {
