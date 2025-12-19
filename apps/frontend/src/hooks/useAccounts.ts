@@ -87,14 +87,14 @@ export function useRemoveAccount() {
 }
 
 /**
- * Get accounts at risk (risk score >= 60)
+ * Get accounts at risk (risk score >= 30)
  */
 export function useAccountsAtRisk() {
   const { data: accounts, ...rest } = useAccounts({ isActive: true });
 
   const atRiskAccounts = accounts?.filter((account) => {
     const latestSnapshot = account.snapshots?.[0];
-    return latestSnapshot && latestSnapshot.riskScore >= 60;
+    return latestSnapshot && latestSnapshot.riskScore >= 30;
   });
 
   return {

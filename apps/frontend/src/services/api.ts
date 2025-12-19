@@ -403,6 +403,11 @@ class ApiService {
     return response.data;
   }
 
+  async confirmClosePosition(id: string, params: { txSignature: string; realizedPnl?: number }): Promise<any> {
+    const response = await this.client.post<ApiResponse<any>>(`/positions/${id}/confirm-close`, params);
+    return response.data;
+  }
+
   async confirmPosition(params: {
     walletAddress: string;
     protocol: string;
@@ -460,6 +465,161 @@ class ApiService {
     const response = await this.client.get<ApiResponse<any>>('/portfolio/pnl', {
       params: { walletAddress, network },
     });
+    return response.data.data;
+  }
+
+  // ==========================================
+  // Privacy (Arcium) Endpoints
+  // ==========================================
+
+  async getPrivacyStatus(): Promise<{
+    mxeCluster: { id: string; status: string; nodeCount: number; threshold: number };
+    orderFlow: { queueSize: number; processedCount: number };
+    monitoring: { totalPositions: number; atRiskCount: number };
+    features: { privateMonitoring: boolean; privateSwaps: boolean; darkPool: boolean; encryptedOrderFlow: boolean };
+  }> {
+    const response = await this.client.get<ApiResponse<any>>('/privacy/status');
+    return response.data.data;
+  }
+
+  async encryptPositionForMonitoring(params: {
+    walletAddress: string;
+    collateralValue: number;
+    debtValue: number;
+    healthFactor?: number;
+    leverage?: number;
+  }): Promise<{ positionId: string; mxeCluster: string; encryptedAt: Date }> {
+    const response = await this.client.post<ApiResponse<any>>('/privacy/monitoring/encrypt', params);
+    return response.data.data;
+  }
+
+  async runPrivateHealthCheck(walletAddress: string): Promise<{
+    walletAddress: string;
+    riskLevel: 'SAFE' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+    requiresAction: boolean;
+    proofHash: string;
+    timestamp: number;
+  }> {
+    const response = await this.client.post<ApiResponse<any>>('/privacy/monitoring/check', { walletAddress });
+    return response.data.data;
+  }
+
+  async runBatchPrivateHealthCheck(walletAddresses: string[]): Promise<{
+    results: Array<{ walletAddress: string; riskLevel: string; requiresAction: boolean }>;
+    summary: { total: number; atRisk: number };
+  }> {
+    const response = await this.client.post<ApiResponse<any>>('/privacy/monitoring/batch-check', { walletAddresses });
+    return response.data.data;
+  }
+
+  async createPrivateSwapIntent(params: {
+    walletAddress: string;
+    fromToken: string;
+    toToken: string;
+    amount: number;
+    minOutput?: number;
+    slippage?: number;
+  }): Promise<{ intentId: string; mxeCluster: string; expiresAt: number }> {
+    const response = await this.client.post<ApiResponse<any>>('/privacy/swap/create-intent', params);
+    return response.data.data;
+  }
+
+  async executePrivateSwap(intentId: string): Promise<{
+    intentId: string;
+    success: boolean;
+    transactionSignature?: string;
+    proofHash: string;
+    executedAt: number;
+  }> {
+    const response = await this.client.post<ApiResponse<any>>('/privacy/swap/execute', { intentId });
+    return response.data.data;
+  }
+
+  async submitDarkPoolOrder(params: {
+    walletAddress: string;
+    side: 'buy' | 'sell';
+    token: string;
+    amount: number;
+    price: number;
+    expiresIn?: number;
+  }): Promise<{ orderId: string; status: string; mxeCluster: string; expiresAt: number }> {
+    const response = await this.client.post<ApiResponse<any>>('/privacy/darkpool/order', params);
+    return response.data.data;
+  }
+
+  async getDarkPoolOrders(walletAddress: string): Promise<Array<{
+    orderId: string;
+    status: string;
+    createdAt: number;
+    expiresAt: number;
+  }>> {
+    const response = await this.client.get<ApiResponse<any>>(`/privacy/darkpool/orders/${walletAddress}`);
+    return response.data.data || [];
+  }
+
+  async cancelDarkPoolOrder(orderId: string, walletAddress: string): Promise<{ orderId: string; cancelled: boolean }> {
+    const response = await this.client.delete<ApiResponse<any>>(`/privacy/darkpool/order/${orderId}`, {
+      data: { walletAddress },
+    });
+    return response.data.data;
+  }
+
+  async getDarkPoolStats(token: string): Promise<{
+    token: string;
+    totalVolume: number;
+    activeOrders: number;
+    matchedToday: number;
+  }> {
+    const response = await this.client.get<ApiResponse<any>>(`/privacy/darkpool/stats/${token}`);
+    return response.data.data;
+  }
+
+  async submitToOrderFlow(params: {
+    walletAddress: string;
+    action: string;
+    params: Record<string, any>;
+    priority?: 'low' | 'normal' | 'high';
+  }): Promise<{ intentId: string; queuePosition: number }> {
+    const response = await this.client.post<ApiResponse<any>>('/privacy/orderflow/submit', params);
+    return response.data.data;
+  }
+
+  async getOrderFlowStatus(flowId: string): Promise<{
+    flowId: string;
+    status: 'collecting' | 'processing' | 'executed';
+    intentsCount: number;
+    createdAt: number;
+  }> {
+    const response = await this.client.get<ApiResponse<any>>(`/privacy/orderflow/status/${flowId}`);
+    return response.data.data;
+  }
+
+  async getOrderFlowStats(): Promise<{
+    queueSize: number;
+    processedCount: number;
+    averageProcessingTime: number;
+  }> {
+    const response = await this.client.get<ApiResponse<any>>('/privacy/orderflow/stats');
+    return response.data.data;
+  }
+
+  // ==========================================
+  // Server Status Endpoints
+  // ==========================================
+
+  async getServerStatus(): Promise<{
+    status: string;
+    uptime: number;
+    uptimeFormatted: string;
+    autoShutdown: {
+      enabled: boolean;
+      totalMs: number;
+      remainingMs: number | null;
+      remainingFormatted: string | null;
+    };
+    startedAt: string;
+  }> {
+    const response = await this.client.get<ApiResponse<any>>('/server/status');
     return response.data.data;
   }
 }
