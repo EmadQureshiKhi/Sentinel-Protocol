@@ -37,6 +37,7 @@ const AppHeader = ({ onPageChange }: AppHeaderProps) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isWalletSidebarOpen, setIsWalletSidebarOpen] = useState(false);
   const [isAccountSidebarOpen, setIsAccountSidebarOpen] = useState(false);
+  const [isSettingsDropdownOpen, setIsSettingsDropdownOpen] = useState(false);
 
   // Sync active item with route
   useEffect(() => {
@@ -102,15 +103,29 @@ const AppHeader = ({ onPageChange }: AppHeaderProps) => {
               css={css`
                 display: flex;
                 align-items: center;
-                gap: 0.375rem;
-                color: var(--clr-primary);
-                font-size: 0.9375rem;
-                font-weight: 700;
-                padding-right: 0.75rem;
+                gap: 0.25rem;
+                padding-right: 0.5rem;
+                margin-right: 0.25rem;
+                border-right: 1px solid var(--border-subtle);
               `}
             >
-              <Shield size={20} weight="fill" />
+              <img 
+                src="/sentinel-icon.png" 
+                alt="Sentinel" 
+                css={css`
+                  width: 42px;
+                  height: 42px;
+                  object-fit: contain;
+                `}
+              />
               <span css={css`
+                font-size: 0.9375rem;
+                font-weight: 800;
+                letter-spacing: -0.5px;
+                background: linear-gradient(135deg, var(--clr-primary) 0%, #f5d742 100%);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
                 @media (max-width: 768px) {
                   display: none;
                 }
@@ -271,29 +286,118 @@ const AppHeader = ({ onPageChange }: AppHeaderProps) => {
               {network === 'mainnet-beta' ? 'Mainnet' : 'Devnet'}
             </button>
 
-            {/* Settings Button */}
-            <button
-              onClick={() => navigate('/settings')}
+            {/* Settings Dropdown */}
+            <div
               css={css`
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 0.875rem;
-                color: ${location.pathname === '/settings' ? 'var(--clr-primary)' : 'var(--text-secondary)'};
-                width: 2.75rem;
-                padding: 0.5rem 0.75rem;
-                background: transparent;
-                border: none;
-                cursor: pointer;
-                transition: color 0.15s;
-
-                &:hover {
-                  color: var(--clr-primary);
-                }
+                position: relative;
               `}
             >
-              <Gear size={20} weight="bold" />
-            </button>
+              <button
+                onClick={() => setIsSettingsDropdownOpen(!isSettingsDropdownOpen)}
+                css={css`
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  font-size: 0.875rem;
+                  color: ${location.pathname === '/settings' || location.pathname === '/privacy' ? 'var(--clr-primary)' : 'var(--text-secondary)'};
+                  width: 2.75rem;
+                  padding: 0.5rem 0.75rem;
+                  background: transparent;
+                  border: none;
+                  cursor: pointer;
+                  transition: color 0.15s;
+
+                  &:hover {
+                    color: var(--clr-primary);
+                  }
+                `}
+              >
+                <Gear size={20} weight="bold" />
+              </button>
+              
+              {isSettingsDropdownOpen && (
+                <>
+                  <div
+                    css={css`
+                      position: fixed;
+                      inset: 0;
+                      z-index: 40;
+                    `}
+                    onClick={() => setIsSettingsDropdownOpen(false)}
+                  />
+                  <div
+                    css={css`
+                      position: absolute;
+                      top: 100%;
+                      right: 0;
+                      margin-top: 0.5rem;
+                      background: var(--bg-surface);
+                      border: 1px solid var(--border-default);
+                      border-radius: 0.5rem;
+                      min-width: 160px;
+                      z-index: 50;
+                      overflow: hidden;
+                      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                    `}
+                  >
+                    <button
+                      onClick={() => {
+                        navigate('/settings');
+                        setIsSettingsDropdownOpen(false);
+                      }}
+                      css={css`
+                        display: flex;
+                        align-items: center;
+                        gap: 0.5rem;
+                        width: 100%;
+                        padding: 0.75rem 1rem;
+                        background: transparent;
+                        border: none;
+                        color: ${location.pathname === '/settings' ? 'var(--clr-primary)' : 'var(--text-primary)'};
+                        font-size: 0.8125rem;
+                        cursor: pointer;
+                        transition: background 0.15s;
+                        text-align: left;
+
+                        &:hover {
+                          background: var(--bg-hover);
+                        }
+                      `}
+                    >
+                      <Gear size={16} />
+                      Settings
+                    </button>
+                    <button
+                      onClick={() => {
+                        navigate('/privacy');
+                        setIsSettingsDropdownOpen(false);
+                      }}
+                      css={css`
+                        display: flex;
+                        align-items: center;
+                        gap: 0.5rem;
+                        width: 100%;
+                        padding: 0.75rem 1rem;
+                        background: transparent;
+                        border: none;
+                        color: ${location.pathname === '/privacy' ? 'var(--clr-primary)' : 'var(--text-primary)'};
+                        font-size: 0.8125rem;
+                        cursor: pointer;
+                        transition: background 0.15s;
+                        text-align: left;
+
+                        &:hover {
+                          background: var(--bg-hover);
+                        }
+                      `}
+                    >
+                      <Shield size={16} />
+                      Arcium Privacy
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
 
             {/* Wallet Connect Button */}
             <button

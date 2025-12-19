@@ -344,7 +344,8 @@ const AccountSidebar = ({ isOpen, onClose }: AccountSidebarProps) => {
                         <div css={css`display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;`}>
                           <div css={css`flex: 1;`}>
                             <div css={css`font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem;`}>
-                              {tx.type === 'POSITION_OPEN' ? 'Position Opened' : 'Protective Swap'}
+                              {tx.type === 'POSITION_OPEN' ? 'Position Opened' : 
+                               tx.type === 'POSITION_CLOSE' ? 'Position Closed' : 'Protective Swap'}
                             </div>
                             <div css={css`font-size: 0.6875rem; color: var(--text-secondary);`}>
                               {tx.type === 'POSITION_OPEN' ? (
@@ -352,6 +353,14 @@ const AccountSidebar = ({ isOpen, onClose }: AccountSidebarProps) => {
                                   {tx.details.collateralToken} → {tx.details.borrowToken}
                                   <br />
                                   {tx.details.leverage?.toFixed(1)}x • {tx.protocol}
+                                </>
+                              ) : tx.type === 'POSITION_CLOSE' ? (
+                                <>
+                                  {tx.details.collateralToken} → {tx.details.borrowToken}
+                                  <br />
+                                  <span css={css`color: ${tx.details.realizedPnl >= 0 ? 'var(--status-success)' : 'var(--status-error)'};`}>
+                                    P/L: ${tx.details.realizedPnl?.toFixed(2) || '0.00'}
+                                  </span> • {tx.protocol}
                                 </>
                               ) : (
                                 <>

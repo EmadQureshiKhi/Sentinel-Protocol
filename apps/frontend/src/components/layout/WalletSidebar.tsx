@@ -174,20 +174,15 @@ const WalletSidebar = ({ isOpen, onClose }: WalletSidebarProps) => {
                 }
               `}
             >
-              <div
+              <img
+                src="/phantom-logo.svg"
+                alt="Phantom"
                 css={css`
                   width: 40px;
                   height: 40px;
-                  background: linear-gradient(135deg, #ab9ff2 0%, #534bb1 100%);
                   border-radius: 8px;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  font-size: 1.5rem;
                 `}
-              >
-                👻
-              </div>
+              />
               <div css={css`flex: 1; text-align: left;`}>
                 <div css={css`font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem;`}>
                   Phantom
@@ -238,20 +233,15 @@ const WalletSidebar = ({ isOpen, onClose }: WalletSidebarProps) => {
                 &:disabled { cursor: not-allowed; }
               `}
             >
-              <div
+              <img
+                src="/solflare-logo.svg"
+                alt="Solflare"
                 css={css`
                   width: 40px;
                   height: 40px;
-                  background: linear-gradient(135deg, #fc7227 0%, #ffc107 100%);
                   border-radius: 8px;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  font-size: 1.5rem;
                 `}
-              >
-                🔥
-              </div>
+              />
               <div css={css`flex: 1; text-align: left;`}>
                 <div css={css`font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem;`}>
                   Solflare
@@ -291,7 +281,6 @@ const WalletSidebar = ({ isOpen, onClose }: WalletSidebarProps) => {
                       justify-content: center;
                       padding: 0.5rem;
                       opacity: ${isConnecting ? 0.5 : 1};
-                      font-size: 1.5rem;
 
                       &:hover {
                         background: var(--bg-surface-hover);
@@ -301,7 +290,11 @@ const WalletSidebar = ({ isOpen, onClose }: WalletSidebarProps) => {
                       &:disabled { cursor: not-allowed; }
                     `}
                   >
-                    {wallet.id === 'phantom' ? '👻' : '🔥'}
+                    <img
+                      src={wallet.id === 'phantom' ? '/phantom-logo.svg' : '/solflare-logo.svg'}
+                      alt={wallet.id}
+                      css={css`width: 28px; height: 28px;`}
+                    />
                   </button>
                 ))}
               </div>
