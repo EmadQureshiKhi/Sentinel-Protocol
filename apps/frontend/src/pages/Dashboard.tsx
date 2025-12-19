@@ -177,7 +177,7 @@ export default function Dashboard() {
 
         {/* Stats Overview */}
         <div css={css`margin-bottom: 1.5rem;`}>
-          <StatsOverview />
+          <StatsOverview visibleAccountCount={accounts?.length || 0} />
         </div>
 
         {/* Main Content Grid */}

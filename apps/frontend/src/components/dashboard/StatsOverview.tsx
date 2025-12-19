@@ -79,7 +79,7 @@ function StatCard({ title, value, subtitle, icon, accentColor = '#dcfd8f' }: Sta
   );
 }
 
-export function StatsOverview() {
+export function StatsOverview({ visibleAccountCount }: { visibleAccountCount?: number }) {
   const { data: stats, isLoading: statsLoading } = useStats();
   const { data: mevStats, isLoading: mevLoading } = useMevSavings();
 
@@ -133,7 +133,7 @@ export function StatsOverview() {
     >
       <StatCard
         title="Monitored Accounts"
-        value={stats?.totalAccounts || 0}
+        value={visibleAccountCount ?? stats?.totalAccounts ?? 0}
         subtitle="Active positions"
         icon={<Eye size={32} weight="fill" />}
         accentColor="#dcfd8f"
