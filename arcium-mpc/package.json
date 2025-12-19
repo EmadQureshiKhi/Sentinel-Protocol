@@ -1,0 +1,27 @@
+{
+  "name": "sentinel-mpc",
+  "version": "0.1.0",
+  "description": "Sentinel Protocol Arcium MPC - Privacy-preserving liquidation protection",
+  "main": "index.js",
+  "scripts": {
+    "test": "arcium test",
+    "build": "arcium build",
+    "deploy:devnet": "arcium deploy --cluster-offset 1078779259 --keypair-path ~/.config/solana/id.json --rpc-url https://api.devnet.solana.com",
+    "deploy:mainnet": "arcium deploy --cluster-offset <MAINNET_CLUSTER> --keypair-path ~/.config/solana/id.json --rpc-url https://api.mainnet-beta.solana.com"
+  },
+  "dependencies": {
+    "@arcium-hq/client": "latest",
+    "@arcium-hq/reader": "latest",
+    "@coral-xyz/anchor": "^0.29.0",
+    "@solana/web3.js": "^1.98.4"
+  },
+  "devDependencies": {
+    "@types/bn.js": "^5.1.0",
+    "@types/chai": "^4.3.0",
+    "@types/mocha": "^9.0.0",
+    "chai": "^4.3.4",
+    "mocha": "^9.0.3",
+    "ts-mocha": "^10.0.0",
+    "typescript": "^5.0.0"
+  }
+}
